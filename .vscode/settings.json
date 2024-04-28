@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "*.html": "html",
+    "*.h": "c",
+    "cstdlib": "c"
+  }
+}
