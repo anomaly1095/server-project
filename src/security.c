@@ -6,7 +6,7 @@
 
 /// @brief Initialize libsodium 
 /// @return errorcode
-inline errcode_t secu_init()
+inline errcode_t secu_init(void)
 {
   if (sodium_init() == -1)
     return LOG(SECU_LOG_PATH, ESODIUM_INIT, "Security ctx_init failed");
@@ -51,7 +51,7 @@ errcode_t secu_check_init_cred(const uint8_t *pass)
 }
 
 //===========================================================================================================
-// SECURITY QUERIES: QUERY_KEY_INSERT /QUERY_KEY_DELETE /QUERY_SELECT_PK /QUERY_SELECT_SK /QUERY_SELECT_PK_SK
+//ASYMMETRIC QUERIES:QUERY_KEY_INSERT /QUERY_KEY_DELETE /QUERY_SELECT_PK /QUERY_SELECT_SK /QUERY_SELECT_PK_SK
 //===========================================================================================================
 
 /// @brief Fill the parameter values for pk and sk
@@ -261,7 +261,7 @@ static inline errcode_t secu_key_del(MYSQL *db_connect)
 }
 
 //===============================================
-//   KEY GENERATION
+//      ASYMMETRIC KEY GENERATION
 //===============================================
 
 /// @brief generate asymmetric keypair and write to the database
@@ -282,3 +282,47 @@ errcode_t secu_init_keys(MYSQL *db_connect)
 
   return __SUCCESS__;
 }
+
+
+//===========================================================================================================
+//                SECURITY: ENCRYPTION DECRYPTION WITH ASYMMETRIC CRYPTOS
+//===========================================================================================================
+
+/// @brief encrypt m of length mlen with pk then store the cipher in c
+/// @param pk public key
+/// @param c buffer to contain cipher
+/// @param m message to encrypt
+/// @param mlen length of message to encrypt
+inline errcode_t secu_asymmetric_encrypt(const uint8_t *pk, uint8_t *c, const void *m, size_t mlen)
+{
+  const uint8_t *__m = (const uint8_t *)m;
+  if (crypto_box_seal(c, __m, mlen, pk))
+    return LOG(SECU_LOG_PATH, E_ASYMM_ENCRYPT, "Security Error during encryption with public key");
+  return __SUCCESS__;
+}
+
+/// @brief decrypt cipher stored in c of length clen with pk and sk then store result in m 
+/// @param pk public key
+/// @param sk secret key
+/// @param m buffer to store decrypted message
+/// @param c cipher to decrypt
+/// @param clen length of cipher to decrypt
+inline errcode_t secu_asymmetric_decrypt(const uint8_t *pk, const uint8_t *sk, void *m, const uint8_t *c, size_t clen)
+{
+  uint8_t *__m = (uint8_t *)m;
+  if (crypto_box_seal_open(__m, c, clen, pk, sk))
+    return LOG(SECU_LOG_PATH, E_ASYMM_DECRYPT, "Security Error during decryption with key pair");
+  return __SUCCESS__;
+}
+
+
+//===============================================
+//      SYMMETRIC KEY GENERATION
+//===============================================
+
+
+
+
+//===========================================================================================================
+//                SECURITY: ENCRYPTION DECRYPTION WITH SYMMETRIC CRYPTO
+//===========================================================================================================

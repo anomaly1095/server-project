@@ -13,6 +13,10 @@
 #define E_WRONG_CREDS   105
 #define E_AUTHKEY       106
 #define E_SHA512        107
+#define E_ASYMM_ENCRYPT 108
+#define E_ASYMM_DECRYPT 109
+#define E_SYMM_ENCRYPT  110
+#define E_SYMM_DECRYPT  111
 
 
 #define PATH_PHYSKEY    "/media/amnesia2/PKEY/keys/auth_init.bin"  // path to the key for first step authentication
@@ -33,7 +37,7 @@
 
 /// @brief Initialize libsodium 
 /// @return errorcode
-errcode_t secu_init();
+errcode_t secu_init(void);
 
 /// @brief generate asymmetric keypair and write to the database
 /// @param db_connect MYSQL db connection

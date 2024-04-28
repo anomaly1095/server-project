@@ -100,9 +100,145 @@ errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd)
   return __SUCCESS__;
 }
 
-//==========================================================================
 
 //==========================================================================
-//                        CONNECTION HANDLING
+//                        EVENT HANDLING & POLLING NEW CONNECTIONS
 //==========================================================================
 
+//===========================INITIALIZERS AND ERROR HANDLERS================  
+
+/// @brief initialize pollfd structures for incoming data and fd = -1 so that they are ignored by poll
+/// @param total_cli__fds all file descriptors available accross all threads
+inline void net_init_clifd(pollfd_t **total_cli__fds)
+{
+  for (size_t i = 0; i < SERVER_THREAD_NO; i++)
+    for (size_t j = 0; j < CLIENTS_PER_THREAD; j++){
+      total_cli__fds[i][j].fd = -1;
+      total_cli__fds[i][j].events = POLLIN | POLLPRI;
+      total_cli__fds[i][j].revents = 0;
+    }
+}
+
+
+/// @brief add new client connection to pollfds being bolled by specific thread thread's 
+/// @param thread_cli__fds file descriptors being polled by a thread
+/// @param new_cli_fd new client's file descriptor
+static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, sockfd_t new_cli_fd)
+{
+  for (size_t i = 0; i < CLIENTS_PER_THREAD; i++)
+    if (thread_cli__fds[i].fd == -1){
+      thread_cli__fds[i].fd = new_cli_fd;
+      return __SUCCESS__;
+    }
+  return MAX_FDS_IN_THREAD;
+}
+
+/// @brief add new client connection to pollfd being polled by one of the thread
+/// @param total_cli__fds all file descriptors available accross all threads
+/// @param new_cli_fd new client's file descriptor
+static inline errcode_t net_add_clifd(pollfd_t **total_cli__fds, sockfd_t new_cli_fd)
+{
+  for (size_t i = 0; i < SERVER_THREAD_NO; i++)
+    if (!net_add_clifd_to_thread(total_cli__fds[i], new_cli_fd))
+      return __SUCCESS__;
+      
+  return LOG(NET_LOG_PATH, MAX_FDS_IN_PROGRAM, "WARNING max_file descriptors reached for system");
+}
+
+
+/// @brief poll error handler 
+/// @param __err value of errno passed as argument
+/// @return __SUCCESS__--> resume process D_NET_EXIT--> cleanup and exit
+static inline errcode_t net_handle_poll_err(int __err)
+{
+  static int32_t memory_w = 0;
+  LOG(NET_LOG_PATH, __err, strerror(__err));
+  switch (__err){
+    case EFAULT: 
+      return D_NET_EXIT;
+    case EINTR: 
+      break;
+    case EINVAL: 
+      return D_NET_EXIT;
+    case ENOMEM: 
+      memory_w++;
+      sleep(2);
+      break;
+    default: return __SUCCESS__;
+  }
+  return (memory_w == 4) ? D_NET_EXIT : __SUCCESS__;
+}
+
+//===========================HANDLING NEW CONNECTION========================
+
+/// @brief accept new connection from client and add it to one of pollfds managed by threads
+/// @param server_addr server address struct
+/// @param server_fd server file descriptor
+/// @param total_cli__fds all file descriptors available accross all threads
+static inline errcode_t net_accept_save_new_co(sockaddr_t server_addr, sockfd_t server_fd, pollfd_t **total_cli__fds)
+{
+  sockaddr_t new_addr;
+  sockfd_t new_fd;
+  if ((new_fd = accept(server_fd, NULL, NULL)) == -1)
+    return LOG(NET_LOG_PATH, errno, strerror(errno));
+  if (net_add_clifd(total_cli__fds, new_fd))
+    return MAX_FDS_IN_PROGRAM;
+  return __SUCCESS__;
+}
+
+
+//===========================MAIN EVENT LOOP========================  
+
+
+/// @brief handler for incoming client connections (called by the program's main thread)
+/// @param server_addr server address struct
+/// @param server_fd server file descriptor
+/// @param total_cli__fds all file descriptors available accross all threads
+errcode_t net_connection_handler(sockaddr_t server_addr, sockfd_t server_fd, pollfd_t **total_cli__fds)
+{
+  pollfd_t __fds[1] = {[0].fd = server_fd, [0].events = POLLIN | POLLPRI, [0].revents = 0};
+  int32_t n_events = 0;
+
+  for (;;)
+  {
+    n_events = poll(__fds, 1, CONN_POLL_TIMEOUT);
+    // handling error
+    if (n_events == -1){
+      if (net_handle_poll_err(errno))
+        return D_NET_EXIT;
+      continue;
+    }
+    net_accept_save_new_co(server_addr, server_fd, total_cli__fds);
+  }
+  return __SUCCESS__;
+}
+
+//==========================================================================
+//              EVENT HANDLING & POLLING COMMUNICATION AND DATA IO
+//==========================================================================
+
+
+
+
+
+
+
+
+
+//===========================MAIN EVENT LOOP========================  
+
+/// @brief handler for incoming client data (called by the additionally created threads)
+/// @param args hint to the struct defined in /include/base.h
+/// @return errcode status
+void *net_communication_handler(void *args)
+{
+  thread_arg_t *thread_arg = (thread_arg_t *)args;
+  int32_t array_num = thread_arg->thread_no, n_events;
+  #if (!MUTEX_SUPPORT)
+    pthread_mutex_unlock(&__mutex);
+  #endif
+  for (;;)
+  {
+    
+  }
+}

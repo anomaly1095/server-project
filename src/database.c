@@ -9,7 +9,7 @@ static inline errcode_t db_get_auth_host(char *host)
   printf("db hostname: ");
   if (!fgets(host, DB_SIZE_HOST-1, stdin))
     return __FAILURE__;
-  host[strlen(host) - 1] = 0x0;
+  host[strlen(host) - 1] = 0x0; // removing \n
   return __SUCCESS__;
 }
 
@@ -19,7 +19,7 @@ static inline errcode_t db_get_auth_user(char *user)
   printf("db username: ");
   if (!fgets(user, DB_SIZE_USER-1, stdin))
     return __FAILURE__;
-  user[strlen(user) - 1] = 0x0;
+  user[strlen(user) - 1] = 0x0; // removing \n
   return __SUCCESS__;
 }
 
@@ -29,7 +29,7 @@ static inline errcode_t db_get_auth_pass(char *passwd)
   printf("db password: ");
   char *input = getpass("");
   strncpy(passwd, input, DB_SIZE_PASS - 1);
-  passwd[strlen(passwd) - 1] = 0x0;
+  passwd[strlen(passwd) - 1] = 0x0; // removing \n
   return __SUCCESS__;
 }
 /// @brief get database name from admin
@@ -38,7 +38,7 @@ static inline errcode_t db_get_auth_db(char *db)
   printf("db name: ");
   if (!fgets(db, DB_SIZE_DB-1, stdin))
     return __FAILURE__;
-  db[strlen(db) - 1] = 0x0;
+  db[strlen(db) - 1] = 0x0; // removing \n
   return __SUCCESS__;
 }
 

@@ -33,6 +33,7 @@ typedef struct DBCreds{
     uint32_t port;
 }db_creds_t;
 
+
 errcode_t db_init(MYSQL **db_connect);
 
 #endif
