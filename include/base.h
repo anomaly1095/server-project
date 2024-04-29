@@ -4,6 +4,7 @@
 #define BASE_H      1
 #include <poll.h>
 #include <netdb.h>
+#include <sodium.h>
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -35,7 +36,7 @@ typedef struct Users
   uint8_t sym_key;
   char    *creation_time;
   char    *modif_time;
-  char    *modif_time;
+  char    *modif_time_sym_key;
 }user_t;
 
 
@@ -125,6 +126,8 @@ extern errcode_t  get_pass(char *pass);
 extern errcode_t  check_pass(const char *pass);
 extern errcode_t  total_cleanup(MYSQL *db_connect, pthread_t *threads, errcode_t __err);
 #define LOG(__lp, __err, __msg) log_write(__lp, __err, __msg)
+
+extern errcode_t req_request_handle(const void *req);
 
 
 

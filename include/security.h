@@ -2,7 +2,7 @@
 #ifndef SECURITY_H
 #define SECURITY_H      1
 #include "base.h"
-#include <sodium.h>
+
 
 //  security errors 100->150 
 #define ESODIUM_INIT    100
@@ -35,6 +35,8 @@
 #define QUERY_SELECT_PK_SK  "SELECT pk, sk FROM KeyPairs;"
 #define QUERY_SELECT_PK_SK_LEN (__builtin_strlen(QUERY_SELECT_PK_SK))
 
+#define SECRET_SALT_LEN    32LU
+
 /// @brief Initialize libsodium 
 /// @return errorcode
 errcode_t secu_init(void);
@@ -46,6 +48,10 @@ errcode_t secu_init_keys(MYSQL *db_connect);
 /// @brief checks if password entered is same as in physkey (step 1 authentication)
 /// @param pass command line argument entered password
 errcode_t secu_check_init_cred(const uint8_t *pass);
+
+/// @brief initialize pollfd structures for incoming data and fd = -1 so that they are ignored by poll
+/// @param total_cli__fds all file descriptors available accross all threads
+void net_init_clifd(pollfd_t **total_cli__fds);
 
 /// @brief get (public key) from database
 /// @param db_connect MYSQL db connection
@@ -62,5 +68,6 @@ errcode_t db_get_sk(MYSQL *db_connect, uint8_t *sk);
 /// @param pk public key
 /// @param sk secret key
 errcode_t db_get_pk_sk(MYSQL *db_connect, uint8_t *pk, uint8_t *sk);
+
 
 #endif

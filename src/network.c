@@ -1,10 +1,8 @@
 #include "../include/network.h"
 
 //==========================================================================
-//                        SERVER SETUP INIT
+//                        SERVER SETUP
 //==========================================================================
-
-//=====================IP CONVERSION / DNS LOOKUPS========================== 
 
 
 #if (USING_HN)
@@ -45,9 +43,7 @@ static inline errcode_t net_get_ipaddr(sockaddr_t *server_addr)
   #endif
   return __SUCCESS__;
 }
-//==========================================================================
 
-//=========================INIT SOCKADDR_T================================== 
 
 /// @brief filling up server's sockaddr struct 
 static inline errcode_t net_server_init(sockaddr_t *server_addr)
@@ -61,7 +57,6 @@ static inline errcode_t net_server_init(sockaddr_t *server_addr)
   return __SUCCESS__;
 }
 
-//=====================SETTING SOCKET OPTIONS=============================== 
 
 /// @brief setting up needed options for server socket
 static inline errcode_t net_set_server_opts(sockfd_t server_fd)
@@ -75,9 +70,6 @@ static inline errcode_t net_set_server_opts(sockfd_t server_fd)
     return __SUCCESS__;
 }
 
-//==========================================================================
-
-//=====================SERVER SETUP MAIN====================================
 
 /// @brief setting up the server (socket / bind / options / listen)
 /// @param server_addr server's address
@@ -103,10 +95,50 @@ errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd)
 
 
 //==========================================================================
-//                        EVENT HANDLING & POLLING NEW CONNECTIONS
+//                  EVENT HANDLING & POLLING NEW CONNECTIONS
 //==========================================================================
 
-//===========================INITIALIZERS AND ERROR HANDLERS================  
+/// @attention This function performs key exchanges over network it is not to be changed.
+/// @attention only if the other end of the communication agrees on it.
+/// @attention to ensure performance and valid communication cycles
+/// @brief 1- send public key 
+/// @brief 2- recv encrypted symmetric key + encrypted secret bytes of len SECRET_SALT_LEN
+/// @brief 3- fetch the public and secret key from the database
+/// @brief 4- decrypt the secret key + decrypt the secret bytes 
+/// @brief 5- send the secret bytes encrypted by the secret key
+/// @brief 6- recv the connected flag ----> REQ_VALID_SYMKEY
+/// @param db_connect MYSQL db connection
+/// @param new_fd new client's file descriptor
+static inline errcode_t net_key_exchange(MYSQL *db_connect, sockfd_t new_fd)
+{
+
+  return __SUCCESS__;
+}
+
+
+/// @brief poll error handler 
+/// @param __err value of errno passed as argument
+/// @return __SUCCESS__--> resume process D_NET_EXIT--> cleanup and exit
+static inline errcode_t net_handle_poll_err(int __err)
+{
+  static int32_t memory_w = 0;
+  LOG(NET_LOG_PATH, __err, strerror(__err));
+  switch (__err){
+    case EFAULT: 
+      return D_NET_EXIT;
+    case EINTR: 
+      break;
+    case EINVAL: 
+      return D_NET_EXIT;
+    case ENOMEM: 
+      memory_w++;
+      sleep(MEM_WARN_INTV);
+      break;
+    default: return __SUCCESS__;
+  }
+  return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
+}
+
 
 /// @brief initialize pollfd structures for incoming data and fd = -1 so that they are ignored by poll
 /// @param total_cli__fds all file descriptors available accross all threads
@@ -141,64 +173,42 @@ static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, sockf
 static inline errcode_t net_add_clifd(pollfd_t **total_cli__fds, sockfd_t new_cli_fd)
 {
   for (size_t i = 0; i < SERVER_THREAD_NO; i++)
-    if (!net_add_clifd_to_thread(total_cli__fds[i], new_cli_fd))
-      return __SUCCESS__;
-      
-  return LOG(NET_LOG_PATH, MAX_FDS_IN_PROGRAM, "WARNING max_file descriptors reached for system");
+    if (net_add_clifd_to_thread(total_cli__fds[i], new_cli_fd))
+    return LOG(NET_LOG_PATH, MAX_FDS_IN_PROGRAM, "WARNING max_file descriptors reached for system");
+
+  return __SUCCESS__;
 }
 
-
-/// @brief poll error handler 
-/// @param __err value of errno passed as argument
-/// @return __SUCCESS__--> resume process D_NET_EXIT--> cleanup and exit
-static inline errcode_t net_handle_poll_err(int __err)
-{
-  static int32_t memory_w = 0;
-  LOG(NET_LOG_PATH, __err, strerror(__err));
-  switch (__err){
-    case EFAULT: 
-      return D_NET_EXIT;
-    case EINTR: 
-      break;
-    case EINVAL: 
-      return D_NET_EXIT;
-    case ENOMEM: 
-      memory_w++;
-      sleep(MEM_WARN_INTV);
-      break;
-    default: return __SUCCESS__;
-  }
-  return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
-}
-
-//===========================HANDLING NEW CONNECTION========================
 
 /// @brief accept new connection from client and add it to one of pollfds managed by threads
 /// @param server_addr server address struct
 /// @param server_fd server file descriptor
 /// @param total_cli__fds all file descriptors available accross all threads
-static inline errcode_t net_accept_save_new_co(sockaddr_t server_addr, sockfd_t server_fd, pollfd_t **total_cli__fds)
+static inline errcode_t net_accept_save_new_co(thread_arg_t *thread_arg)
 {
   sockaddr_t new_addr;
   sockfd_t new_fd;
-  if ((new_fd = accept(server_fd, NULL, NULL)) == -1)
+  // accept co
+  if ((new_fd = accept(thread_arg->server_fd, NULL, NULL)) == -1)
     return LOG(NET_LOG_PATH, errno, strerror(errno));
-  if (net_add_clifd(total_cli__fds, new_fd))
+  
+  if (net_key_exchange(thread_arg->db_connect, new_fd))
+    return E_KEY_EXCHANGE;  // logging will be internally handled
+
+  // add file descriptor to threads poll list
+  if (net_add_clifd(thread_arg->total_cli__fds, new_fd))
     return MAX_FDS_IN_PROGRAM;
   return __SUCCESS__;
 }
-
-
-//===========================MAIN EVENT LOOP========================  
 
 
 /// @brief handler for incoming client connections (called by the program's main thread)
 /// @param server_addr server address struct
 /// @param server_fd server file descriptor
 /// @param total_cli__fds all file descriptors available accross all threads
-errcode_t net_connection_handler(sockaddr_t server_addr, sockfd_t server_fd, pollfd_t **total_cli__fds)
+errcode_t net_connection_handler(thread_arg_t *thread_arg)
 {
-  pollfd_t __fds[1] = {[0].fd = server_fd, [0].events = POLLIN | POLLPRI, [0].revents = 0};
+  pollfd_t __fds[1] = {[0].fd = thread_arg->server_fd, [0].events = POLLIN | POLLPRI, [0].revents = 0};
   int32_t n_events = 0;
   for (;;)
   {
@@ -209,7 +219,7 @@ errcode_t net_connection_handler(sockaddr_t server_addr, sockfd_t server_fd, pol
         return D_NET_EXIT;
       continue;
     }
-    net_accept_save_new_co(server_addr, server_fd, total_cli__fds);
+    net_accept_save_new_co(thread_arg);
   }
   return __SUCCESS__;
 }
@@ -220,7 +230,7 @@ errcode_t net_connection_handler(sockaddr_t server_addr, sockfd_t server_fd, pol
 //==========================================================================
 
 
-/// @brief disconnect client bcs recv returned 0
+/// @brief disconnect client bcs recv returned 0 (close fd and put last fd in i)
 /// @param __fds list of client file descriptors polled by this thread
 /// @param i index of client file decriptor
 static inline void cli_dc(pollfd_t *__fds, size_t i)
@@ -228,6 +238,7 @@ static inline void cli_dc(pollfd_t *__fds, size_t i)
   size_t j = i;
   while (__fds[j+1].fd != -1)
     j++;
+  close(__fds[i].fd);
   __fds[i].fd = __fds[j].fd;
   __fds[j].fd = -1;
 }
@@ -263,7 +274,8 @@ static errcode_t net_handle_recv_err(pollfd_t *__fds, size_t i, errcode_t __err)
       return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in recv() interrupt occured");
 
     case ENOTSOCK:
-      return LOG(NET_LOG_PATH, __err, "ERROR in recv() fd is not a socket");
+      cli_dc(__fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in recv() fd is not a socket");
     
     case EINVAL:
       return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in recv() invalid argument");
@@ -293,26 +305,27 @@ static inline errcode_t net_data_available(pollfd_t *__fds, size_t i, void *buf)
   
   int32_t mss, __err;
   socklen_t mss_len = sizeof mss;
-  GET__MSS(__fds[i].fd, mss, mss_len);
+  if (GET__MSS(__fds[i].fd, mss, mss_len) == -1) // minimum TP/IP segment size agreed on upon TCP's three way handshake
+    return DATA_INAVAILABLE;
   buf = malloc((size_t)mss);
   
   switch (recv(__fds[i].fd, buf, (size_t)mss, MSG_DONTWAIT | MSG_OOB))
   {
-    case 0: // client disconnects
-      free(buf);
-      buf = NULL;
-      cli_dc(__fds[i].fd, i);
-      return DATA_INAVAILABLE;
-  
-    case -1: // error
+    case -1:      // error
       free(buf);
       buf = NULL;
       __err = errno;
       if (net_handle_recv_err(__fds, i, __err))  // critical error
         pthread_exit(NULL);         // termlinate thread
       return DATA_INAVAILABLE;
+
+    case 0:         // client disconnects
+      free(buf);
+      buf = NULL;
+      cli_dc(__fds[i].fd, i);
+      return DATA_INAVAILABLE;
   
-    default: // data available
+    default:      // data available
       return DATA_AVAILABLE;
   }
 }
@@ -324,17 +337,14 @@ static inline void net_check_clifds(pollfd_t *__fds)
 {
   size_t i = 0;
   void *buf = NULL;
-  while (__fds[i].fd != -1){ // iterate over all fds
-    if (__fds[i].revents & POLLIN)        // check if revents POLLIN was activated
-      if (net_data_available(__fds, i, buf)) // check client's RCVBUFF is available
+  while (__fds[i].fd != -1){                  // iterate over all fds
+    if (__fds[i].revents & POLLIN)            // check if revents POLLIN was activated
+      if (net_data_available(__fds, i, buf))  // check client's RCVBUFF is available
         if (req_request_handle(buf))          // call for request module to parse and handle
-          LOG(NET_LOG_PATH, EREQ_FAIL, "Incoming request failed");
+          return __FAILURE__;                 // logging will be in the request module
     ++i;
   }
 }
-
-
-//===========================MAIN EVENT LOOP========================
 
 
 /// @brief handler for incoming client data (called by the additionally created threads)
@@ -362,7 +372,7 @@ void *net_communication_handler(void *args)
         pthread_exit((void*)status);
       }
       continue;
-    default: // incoming data
+    default:          // incoming data
       net_check_clifds(__fds);
     }
   }

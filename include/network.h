@@ -2,7 +2,7 @@
 
 #ifndef NETWORK_H
 #define NETWORK_H       1
-#include "request.h"
+#include "security.h"
 
 
 /*network errors 300->400*/
@@ -12,9 +12,9 @@
 #define ERR_IP_HANDLER      303
 #define MAX_FDS_IN_THREAD   304
 #define MAX_FDS_IN_PROGRAM  305
+#define E_KEY_EXCHANGE      306
 #define DATA_AVAILABLE      1
 #define DATA_INAVAILABLE    0
-
 //===============================================
 //              ----MODES----
 //===============================================
@@ -110,29 +110,7 @@ int32_t __KEEPCNTR    = 5;  // 5 repetitions
 #define GET__MSS(clifd, mss, mss_len) (getsockopt(clifd, IPPROTO_TCP, TCP_MAXSEG,    &mss,         &mss_len))
 
 
-#define CONN_POLL_TIMEOUT -1
-#define COMM_POLL_TIMEOUT 10
-
-
-/// @brief setting up the server (socket / bind / options / listen)
-/// @param server_addr server's address
-/// @param server_fd server's socket file descriptor
-errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd);
-
-/// @brief handler for incoming client connections (called by the program's main thread)
-/// @param server_addr server address struct
-/// @param server_fd server file descriptor
-/// @param total_cli__fds all file descriptors available accross all threads
-errcode_t net_connection_handler(sockaddr_t server_addr, sockfd_t server_fd, pollfd_t **total_cli__fds);
-
-
-/// @brief handler for incoming client data (called by the additionally created threads)
-/// @param args hint to the struct defined in /include/base.h
-/// @return errcode status
-void *net_communication_handler(void *args);
-
-/// @brief initialize pollfd structures for incoming data and fd = -1 so that they are ignored by poll
-/// @param total_cli__fds all file descriptors available accross all threads
-inline void net_init_clifd(pollfd_t **total_cli__fds);
+#define CONN_POLL_TIMEOUT -1  // poll untill new connection received
+#define COMM_POLL_TIMEOUT 10  // 10 milliseconds
 
 #endif

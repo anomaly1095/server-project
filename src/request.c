@@ -7,26 +7,25 @@
 static inline req_run_request(const void *req, uint32_t reqcode)
 {
   switch (reqcode){
-    case 1: 	break; // return foo()
-    case 2: 	break; // return foo()
-    case 3: 	break; // return foo()
-    case 4: 	break; // return foo()
-    case 5: 	break; // return foo()
-    case 6: 	break; // return foo()
-    case 7: 	break; // return foo()
-    case 8: 	break; // return foo()
-    case 9: 	break; // return foo()
-    case 10: 	break; // return foo()
-    case 11: 	break; // return foo()
-    case 12: 	break; // return foo()
-    case 13: 	break; // return foo()
-    case 14: 	break; // return foo()
-    case 15: 	break; // return foo()
-    case 16: 	break; // return foo()
-    case 17: 	break; // return foo()
-    case 18: 	break; // return foo()
-    case 19: 	break; // return foo()
-    case 20: 	break; // return foo()
+    case REQ_SENT_ASYMKEY: 	break;
+    case REQ_RECV_SYMKEY: 	break;
+    case REQ_VALID_SYMKEY: 	break;
+    case REQ_MODIF_SYMKEY: 	break;
+    case 4: 	break;
+    case 5: 	break;
+    case 6: 	break;
+    case 7: 	break;
+    case 8: 	break;
+    case 9: 	break;
+    case 10: 	break;
+    case 11: 	break;
+    case 12: 	break;
+    case 13: 	break;
+    case 14: 	break;
+    case REQ_CREATE_U: 	    break;
+    case REQ_DELETE_U: 	    break;
+    case REQ_MODIF_UNAME: 	break;
+    case REQ_MODIF_UPASS: 	break;
     default: return LOG(REQ_LOG_PATH, EUNDEF_REQ_CODE, "Undefined request code");
   }
   return __SUCCESS__;
