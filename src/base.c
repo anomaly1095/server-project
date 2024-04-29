@@ -79,7 +79,6 @@ inline errcode_t total_cleanup(MYSQL *db_connect, pthread_t *threads, errcode_t 
 {
   for (size_t i = 0; i < SERVER_THREAD_NO; i++)
     free(threads+i);
-
   mysql_close(db_connect);
   return __err;
 }

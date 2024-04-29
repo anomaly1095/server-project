@@ -2,7 +2,7 @@
 
 #ifndef NETWORK_H
 #define NETWORK_H       1
-#include "base.h"
+#include "request.h"
 
 
 /*network errors 300->400*/
@@ -12,6 +12,8 @@
 #define ERR_IP_HANDLER      303
 #define MAX_FDS_IN_THREAD   304
 #define MAX_FDS_IN_PROGRAM  305
+#define DATA_AVAILABLE      1
+#define DATA_INAVAILABLE    0
 
 //===============================================
 //              ----MODES----
@@ -94,20 +96,22 @@
 //===============================================
 //                  OPTIONS
 //===============================================
-int32_t __KEEPALIVE   = 1;  // ON
-int32_t __REUSEADDR   = 1;  // ON
+flag_t __KEEPALIVE   = 1;  // ON
+flag_t __REUSEADDR   = 1;  // ON
 int32_t __IDLETIME    = 60; // 60 seconds 
 int32_t __INTRLTIME   = 10; // 10 seconds
 int32_t __KEEPCNTR    = 5;  // 5 repetitions
 
-#define SET__KEEPALIVE(fd) (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &__KEEPALIVE, sizeof(int)))
-#define SET__REUSEADDR(fd) (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &__REUSEADDR, sizeof(int)))
-#define SET__IDLETIME(fd)  (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &__IDLETIME, sizeof(int)))
-#define SET__INTRLTIME(fd) (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &__INTRLTIME, sizeof(int)))
-#define SET__KEEPCNTR(fd)  (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &__KEEPCNTR, sizeof(int)))
+#define SET__KEEPALIVE(fd)            (setsockopt(fd,    SOL_SOCKET,  SO_KEEPALIVE,  &__KEEPALIVE, sizeof(int)))
+#define SET__REUSEADDR(fd)            (setsockopt(fd,    SOL_SOCKET,  SO_REUSEADDR,  &__REUSEADDR, sizeof(int)))
+#define SET__IDLETIME(fd)             (setsockopt(fd,    IPPROTO_TCP, TCP_KEEPIDLE,  &__IDLETIME,  sizeof(int)))
+#define SET__INTRLTIME(fd)            (setsockopt(fd,    IPPROTO_TCP, TCP_KEEPINTVL, &__INTRLTIME, sizeof(int)))
+#define SET__KEEPCNTR(fd)             (setsockopt(fd,    IPPROTO_TCP, TCP_KEEPCNT,   &__KEEPCNTR,  sizeof(int)))
+#define GET__MSS(clifd, mss, mss_len) (getsockopt(clifd, IPPROTO_TCP, TCP_MAXSEG,    &mss,         &mss_len))
+
 
 #define CONN_POLL_TIMEOUT -1
-#define COMM_POLL_TIMEOUT -1
+#define COMM_POLL_TIMEOUT 10
 
 
 /// @brief setting up the server (socket / bind / options / listen)

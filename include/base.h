@@ -17,6 +17,7 @@
 
 
 typedef int32_t errcode_t;
+typedef int32_t flag_t;
 typedef struct in6_addr in6_addr_t;
 typedef int32_t sockfd_t;
 typedef struct pollfd pollfd_t;
@@ -58,6 +59,8 @@ typedef struct Users
 #define D_SECU_EXIT   015
 #define D_DB_EXIT     016
 #define D_CORE_EXIT   017
+#define MAX_MEM_WARN  4
+#define MEM_WARN_INTV 1
 
 
 #define DATETIME_FORM (const char *)"%Y-%m-%d %H:%M:%S"
@@ -85,9 +88,9 @@ typedef struct Users
   #error "Max number of threads reached"
 #endif
 
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L) /// we use ATOMIC
+#if defined(__STDC_NO_ATOMICS__) || (__STDC_VERSION__ < 201112L) /// we use ATOMIC
 
-#define MUTEX_SUPPORT         1
+#define ATOMIC_SUPPORT           0
 /// @brief struct that will be used by threads as argument to handle requests etc...
 typedef struct ThreadArgs
 {
@@ -95,12 +98,16 @@ typedef struct ThreadArgs
   sockfd_t    server_fd;      // no race condition issues with these 2 we will only perform read on them
   pollfd_t    total_cli__fds[SERVER_THREAD_NO][SERVER_BACKLOG]; // THIS WILL REQUIRE GOOD HANDLING BY US  
   MYSQL      *db_connect;     // all threads will access the db concurrently but it is the db that handles concurrency
-  _Atomic uint32_t    thread_no;  // number of thread set by each iteration in run_thread()
+  uint32_t    thread_id;  // number of thread set by each iteration in run_thread()
 }thread_arg_t;
+
+/// @brief this mutex will only be used once by everythread to check id
+pthread_mutex_t mutex_thread_id;
+pthread_mutex_t mutex_memory_w;
   
 #else /// we use mutex
 
-#define MUTEX_SUPPORT           0
+#define ATOMIC_SUPPORT         1
 /// @brief struct that will be used by threads as argument to handle requests etc...
 typedef struct ThreadArgs
 {
@@ -108,17 +115,16 @@ typedef struct ThreadArgs
   sockfd_t    server_fd;      // no race condition issues with these 2 we will only perform read on them
   pollfd_t    total_cli__fds[SERVER_THREAD_NO][SERVER_BACKLOG]; // THIS WILL REQUIRE GOOD HANDLING BY US  
   MYSQL      *db_connect;     // all threads will access the db concurrently but it is the db that handles concurrency
-  uint32_t    thread_no;  // number of thread set by each iteration in run_thread()
+  _Atomic uint32_t    thread_id;  // thread identifier
 }thread_arg_t;
-pthread_mutex_t __mutex;
+
 #endif
 
 extern errcode_t  log_write(const char *log_path, errcode_t __err, const char *__msg);
 extern errcode_t  get_pass(char *pass);
 extern errcode_t  check_pass(const char *pass);
 extern errcode_t  total_cleanup(MYSQL *db_connect, pthread_t *threads, errcode_t __err);
-
-#define LOG(__lp, __err, __msg) log_write(__lp, __err, __msg);
+#define LOG(__lp, __err, __msg) log_write(__lp, __err, __msg)
 
 
 

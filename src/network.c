@@ -6,6 +6,7 @@
 
 //=====================IP CONVERSION / DNS LOOKUPS========================== 
 
+
 #if (USING_HN)
 /// @brief this functions gets called
 /// @param server_addr 
@@ -133,6 +134,7 @@ static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, sockf
   return MAX_FDS_IN_THREAD;
 }
 
+
 /// @brief add new client connection to pollfd being polled by one of the thread
 /// @param total_cli__fds all file descriptors available accross all threads
 /// @param new_cli_fd new client's file descriptor
@@ -162,11 +164,11 @@ static inline errcode_t net_handle_poll_err(int __err)
       return D_NET_EXIT;
     case ENOMEM: 
       memory_w++;
-      sleep(2);
+      sleep(MEM_WARN_INTV);
       break;
     default: return __SUCCESS__;
   }
-  return (memory_w == 4) ? D_NET_EXIT : __SUCCESS__;
+  return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
 }
 
 //===========================HANDLING NEW CONNECTION========================
@@ -198,7 +200,6 @@ errcode_t net_connection_handler(sockaddr_t server_addr, sockfd_t server_fd, pol
 {
   pollfd_t __fds[1] = {[0].fd = server_fd, [0].events = POLLIN | POLLPRI, [0].revents = 0};
   int32_t n_events = 0;
-
   for (;;)
   {
     n_events = poll(__fds, 1, CONN_POLL_TIMEOUT);
@@ -213,19 +214,128 @@ errcode_t net_connection_handler(sockaddr_t server_addr, sockfd_t server_fd, pol
   return __SUCCESS__;
 }
 
+
 //==========================================================================
 //              EVENT HANDLING & POLLING COMMUNICATION AND DATA IO
 //==========================================================================
 
 
+/// @brief disconnect client bcs recv returned 0
+/// @param __fds list of client file descriptors polled by this thread
+/// @param i index of client file decriptor
+static inline void cli_dc(pollfd_t *__fds, size_t i)
+{
+  size_t j = i;
+  while (__fds[j+1].fd != -1)
+    j++;
+  __fds[i].fd = __fds[j].fd;
+  __fds[j].fd = -1;
+}
 
 
+/// @brief check error value 
+/// @param __fds list of file descriptors handled by the thread
+/// @param i index of the cli fd
+/// @param __err value of errno
+static errcode_t net_handle_recv_err(pollfd_t *__fds, size_t i, errcode_t __err)
+{
+  #if (ATOMIC_SUPPORT)
+    static _Atomic  int32_t memory_w = 0;
+  #else    
+    static int32_t memory_w = 0;
+  #endif
+  switch (__err){
+    case EWOULDBLOCK || EAGAIN:
+      return __SUCCESS__;
+  
+    case ECONNREFUSED:
+      cli_dc(__fds, i);
+      return LOG(NET_LOG_PATH, __err, "ERROR in recv() ");
+    
+    case EFAULT:
+      return LOG(NET_LOG_PATH, __err, "ERROR in recv() ");
+    
+    case ENOTCONN:
+      cli_dc(__fds, i);
+      return LOG(NET_LOG_PATH, __err, "ERROR in recv() ");
+
+    case EINTR: 
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in recv() interrupt occured");
+
+    case ENOTSOCK:
+      return LOG(NET_LOG_PATH, __err, "ERROR in recv() fd is not a socket");
+    
+    case EINVAL:
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in recv() invalid argument");
+
+    case ENOMEM: 
+    #if (ATOMIC_SUPPORT)
+      memory_w++;
+    #else
+      pthread_mutex_lock(&mutex_memory_w);
+      memory_w++;
+      pthread_mutex_unlock(&mutex_memory_w);  
+    #endif
+      sleep(MEM_WARN_INTV);
+      return LOG(NET_LOG_PATH, __err, "WARNING kernel out of memory");
+      break;
+  }
+  return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
+}
 
 
+/// @brief check for data availaibility coming from file descriptor
+/// @param __fds list of file descriptors handled by the thread
+/// @param i index of the cli fd
+/// @param buf buffer to contain the stream
+static inline errcode_t net_data_available(pollfd_t *__fds, size_t i, void *buf)
+{
+  
+  int32_t mss, __err;
+  socklen_t mss_len = sizeof mss;
+  GET__MSS(__fds[i].fd, mss, mss_len);
+  buf = malloc((size_t)mss);
+  
+  switch (recv(__fds[i].fd, buf, (size_t)mss, MSG_DONTWAIT | MSG_OOB))
+  {
+    case 0: // client disconnects
+      free(buf);
+      buf = NULL;
+      cli_dc(__fds[i].fd, i);
+      return DATA_INAVAILABLE;
+  
+    case -1: // error
+      free(buf);
+      buf = NULL;
+      __err = errno;
+      if (net_handle_recv_err(__fds, i, __err))  // critical error
+        pthread_exit(NULL);         // termlinate thread
+      return DATA_INAVAILABLE;
+  
+    default: // data available
+      return DATA_AVAILABLE;
+  }
+}
 
 
+/// @brief iterate over client file descriptor to check which ones have data incoming
+/// @param __fds list of file descriptors handled by the thread
+static inline void net_check_clifds(pollfd_t *__fds)
+{
+  size_t i = 0;
+  void *buf = NULL;
+  while (__fds[i].fd != -1){ // iterate over all fds
+    if (__fds[i].revents & POLLIN)        // check if revents POLLIN was activated
+      if (net_data_available(__fds, i, buf)) // check client's RCVBUFF is available
+        if (req_request_handle(buf))          // call for request module to parse and handle
+          LOG(NET_LOG_PATH, EREQ_FAIL, "Incoming request failed");
+    ++i;
+  }
+}
 
-//===========================MAIN EVENT LOOP========================  
+
+//===========================MAIN EVENT LOOP========================
+
 
 /// @brief handler for incoming client data (called by the additionally created threads)
 /// @param args hint to the struct defined in /include/base.h
@@ -233,12 +343,28 @@ errcode_t net_connection_handler(sockaddr_t server_addr, sockfd_t server_fd, pol
 void *net_communication_handler(void *args)
 {
   thread_arg_t *thread_arg = (thread_arg_t *)args;
-  int32_t array_num = thread_arg->thread_no, n_events;
-  #if (!MUTEX_SUPPORT)
-    pthread_mutex_unlock(&__mutex);
+  pollfd_t *__fds = thread_arg->total_cli__fds[thread_arg->thread_id];
+  #if (!ATOMIC_SUPPORT)
+    pthread_mutex_unlock(&mutex_thread_id);
   #endif
+  int32_t n_events;
+  errcode_t *status = (errcode_t*)malloc(sizeof (errcode_t));
+  *status = __SUCCESS__;
   for (;;)
   {
-    
+    n_events = poll(__fds, CLIENTS_PER_THREAD, COMM_POLL_TIMEOUT);
+    switch (n_events){
+    case 0: continue; // no data
+    case -1:          // handling error
+      if (net_handle_poll_err(errno))
+      {
+        status = D_NET_EXIT;
+        pthread_exit((void*)status);
+      }
+      continue;
+    default: // incoming data
+      net_check_clifds(__fds);
+    }
   }
+  pthread_exit((void*)status);
 }

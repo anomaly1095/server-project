@@ -59,10 +59,10 @@ inline void run_threads(pthread_t *threads, thread_arg_t *thread_arg)
 {
   for (size_t i = 0; i < SERVER_THREAD_NO; i++)
   {
-    #if (!MUTEX_SUPPORT)
-      pthread_mutex_lock(&__mutex);
+    #if (!ATOMIC_SUPPORT)
+      pthread_mutex_lock(&mutex_thread_id);
     #endif
-    thread_arg->thread_no = i;
+    thread_arg->thread_id = i;
     pthread_create(threads + i, NULL, &net_communication_handler, (void*)thread_arg);
   }
 }

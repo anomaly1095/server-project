@@ -14,7 +14,7 @@
 |                 - handling all the requests and helper functions                          |
 |                                                                                           |
 | GENERAL FORMAT:                                                                           |
-|             [req code 4 bytes][sizeseg1 4 bytes][seg1][sizedeg2 4 bytes][seg2]...|
+|             [req code 4 bytes][sizeseg1 4 bytes][seg1][sizedeg2 4 bytes][seg2]...         |
 |  |
 |  |
 |  |
@@ -22,4 +22,9 @@
 // request errors: 400
 #define EUNDEF_REQ_CODE   400
 #define EREQ_FAIL         401
+
+
+
+extern errcode_t req_request_handle(const void *req);
+
 #endif
