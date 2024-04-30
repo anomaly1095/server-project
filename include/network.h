@@ -13,8 +13,10 @@
 #define MAX_FDS_IN_THREAD   304
 #define MAX_FDS_IN_PROGRAM  305
 #define E_KEY_EXCHANGE      306
+#define E_SEND_FAILED       307
+#define E_MISSING_DATA      308
 #define DATA_AVAILABLE      1
-#define DATA_INAVAILABLE    0
+#define DATA_UNAVAILABLE    0
 //===============================================
 //              ----MODES----
 //===============================================
@@ -112,5 +114,11 @@ int32_t __KEEPCNTR    = 5;  // 5 repetitions
 
 #define CONN_POLL_TIMEOUT -1  // poll untill new connection received
 #define COMM_POLL_TIMEOUT 10  // 10 milliseconds
+
+#if (ATOMIC_SUPPORT)
+  _Atomic  int32_t memory_w = 0;
+#else    
+  int32_t memory_w = 0;
+#endif
 
 #endif

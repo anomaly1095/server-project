@@ -98,30 +98,12 @@ errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd)
 //                  EVENT HANDLING & POLLING NEW CONNECTIONS
 //==========================================================================
 
-/// @attention This function performs key exchanges over network it is not to be changed.
-/// @attention only if the other end of the communication agrees on it.
-/// @attention to ensure performance and valid communication cycles
-/// @brief 1- send public key 
-/// @brief 2- recv encrypted symmetric key + encrypted secret bytes of len SECRET_SALT_LEN
-/// @brief 3- fetch the public and secret key from the database
-/// @brief 4- decrypt the secret key + decrypt the secret bytes 
-/// @brief 5- send the secret bytes encrypted by the secret key
-/// @brief 6- recv the connected flag ----> REQ_VALID_SYMKEY
-/// @param db_connect MYSQL db connection
-/// @param new_fd new client's file descriptor
-static inline errcode_t net_key_exchange(MYSQL *db_connect, sockfd_t new_fd)
-{
-
-  return __SUCCESS__;
-}
-
 
 /// @brief poll error handler 
 /// @param __err value of errno passed as argument
 /// @return __SUCCESS__--> resume process D_NET_EXIT--> cleanup and exit
 static inline errcode_t net_handle_poll_err(int __err)
 {
-  static int32_t memory_w = 0;
   LOG(NET_LOG_PATH, __err, strerror(__err));
   switch (__err){
     case EFAULT: 
@@ -147,7 +129,7 @@ inline void net_init_clifd(pollfd_t **total_cli__fds)
   for (size_t i = 0; i < SERVER_THREAD_NO; i++)
     for (size_t j = 0; j < CLIENTS_PER_THREAD; j++){
       total_cli__fds[i][j].fd = -1;
-      total_cli__fds[i][j].events = POLLIN | POLLPRI;
+      total_cli__fds[i][j].events = 0;
       total_cli__fds[i][j].revents = 0;
     }
 }
@@ -161,6 +143,7 @@ static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, sockf
   for (size_t i = 0; i < CLIENTS_PER_THREAD; i++)
     if (thread_cli__fds[i].fd == -1){
       thread_cli__fds[i].fd = new_cli_fd;
+      thread_cli__fds[i].events = POLLIN | POLLPRI;  // we set the events to priority bcs the client did not auth yet
       return __SUCCESS__;
     }
   return MAX_FDS_IN_THREAD;
@@ -191,9 +174,6 @@ static inline errcode_t net_accept_save_new_co(thread_arg_t *thread_arg)
   // accept co
   if ((new_fd = accept(thread_arg->server_fd, NULL, NULL)) == -1)
     return LOG(NET_LOG_PATH, errno, strerror(errno));
-  
-  if (net_key_exchange(thread_arg->db_connect, new_fd))
-    return E_KEY_EXCHANGE;  // logging will be internally handled
 
   // add file descriptor to threads poll list
   if (net_add_clifd(thread_arg->total_cli__fds, new_fd))
@@ -208,7 +188,7 @@ static inline errcode_t net_accept_save_new_co(thread_arg_t *thread_arg)
 /// @param total_cli__fds all file descriptors available accross all threads
 errcode_t net_connection_handler(thread_arg_t *thread_arg)
 {
-  pollfd_t __fds[1] = {[0].fd = thread_arg->server_fd, [0].events = POLLIN | POLLPRI, [0].revents = 0};
+  pollfd_t __fds[1] = {[0].fd = thread_arg->server_fd, [0].events = POLLPRI, [0].revents = 0};
   int32_t n_events = 0;
   for (;;)
   {
@@ -229,7 +209,6 @@ errcode_t net_connection_handler(thread_arg_t *thread_arg)
 //              EVENT HANDLING & POLLING COMMUNICATION AND DATA IO
 //==========================================================================
 
-
 /// @brief disconnect client bcs recv returned 0 (close fd and put last fd in i)
 /// @param __fds list of client file descriptors polled by this thread
 /// @param i index of client file decriptor
@@ -244,31 +223,26 @@ static inline void cli_dc(pollfd_t *__fds, size_t i)
 }
 
 
-/// @brief check error value 
+/// @brief check error value in the recv() syscall
 /// @param __fds list of file descriptors handled by the thread
 /// @param i index of the cli fd
 /// @param __err value of errno
 static errcode_t net_handle_recv_err(pollfd_t *__fds, size_t i, errcode_t __err)
 {
-  #if (ATOMIC_SUPPORT)
-    static _Atomic  int32_t memory_w = 0;
-  #else    
-    static int32_t memory_w = 0;
-  #endif
   switch (__err){
     case EWOULDBLOCK || EAGAIN:
       return __SUCCESS__;
   
     case ECONNREFUSED:
       cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __err, "ERROR in recv() ");
+      return LOG(NET_LOG_PATH, __err, "ERROR in recv() A remote host refused to allow the network connection");
     
     case EFAULT:
-      return LOG(NET_LOG_PATH, __err, "ERROR in recv() ");
+      return LOG(NET_LOG_PATH, __err, "ERROR in recv() The receive buffer pointer point outside the process's address space.");
     
     case ENOTCONN:
       cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __err, "ERROR in recv() ");
+      return LOG(NET_LOG_PATH, __err, "ERROR in recv() The socket is associated with a connection-oriented protocol and has not been connected");
 
     case EINTR: 
       return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in recv() interrupt occured");
@@ -296,6 +270,90 @@ static errcode_t net_handle_recv_err(pollfd_t *__fds, size_t i, errcode_t __err)
 }
 
 
+/// @brief check error value in the send() syscall
+/// @param __fds list of file descriptors handled by the thread
+/// @param i index of the cli fd
+/// @param __err value of errno
+static errcode_t net_handle_send_err(pollfd_t *__fds, size_t i, errcode_t __err)
+{
+  switch (__err){
+    case EWOULDBLOCK || EAGAIN:
+      return __SUCCESS__;
+  
+    case ECONNREFUSED:
+      cli_dc(__fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() A remote host refused to allow the network connection");
+    
+    case EALREADY:
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() Another Fast Open is in progress..");
+    
+    case EFAULT:
+      cli_dc(__fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() An invalid user space address was specified for an argument.");
+    
+    case EBADF:
+      cli_dc(__fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() Invvalid file descriptor.");
+
+    case ECONNRESET:
+      cli_dc(__fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() Connection was reset by peer.");
+
+    case ENOBUFS:
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() The socket is associated with a connection-oriented protocol and has not been connected");
+
+    case ENOTCONN:
+      cli_dc(__fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() The socket is associated with a connection-oriented protocol and has not been connected");
+
+    case EINTR: 
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() interrupt occured");
+
+    case EMSGSIZE:
+      return LOG(NET_LOG_PATH, __SUCCESS__, "Warning in send() The buffer size is way too big");
+
+    case ENOTSOCK:
+      cli_dc(__fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() fd is not a socket");
+    
+    case EINVAL:
+      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() invalid argument");
+
+    case ENOMEM: 
+    #if (ATOMIC_SUPPORT)
+      memory_w++;
+    #else
+      pthread_mutex_lock(&mutex_memory_w);
+      memory_w++;
+      pthread_mutex_unlock(&mutex_memory_w);  
+    #endif
+      sleep(MEM_WARN_INTV);
+      return LOG(NET_LOG_PATH, __err, "WARNING kernel out of memory");
+      break;
+  }
+  return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
+}
+
+
+static inline errcode_t sendall(pollfd_t *__fds, size_t i, const void *buf, size_t n)
+{
+  ssize_t rest = n, sent;
+  int32_t attempts = 0;
+  while (rest){
+    if ((sent = send(__fds[i].fd, buf, n, MSG_DONTWAIT | MSG_OOB)) == -1){
+      if (net_handle_send_err(__fds, i, errno))
+        pthread_exit(NULL);
+      else
+        return E_SEND_FAILED;
+    }
+    if (attempts == 4)
+      return E_SEND_FAILED;
+    rest = n - sent;
+  }
+  return __SUCCESS__;
+}
+
+
 /// @brief check for data availaibility coming from file descriptor
 /// @param __fds list of file descriptors handled by the thread
 /// @param i index of the cli fd
@@ -306,7 +364,7 @@ static inline errcode_t net_data_available(pollfd_t *__fds, size_t i, void *buf)
   int32_t mss, __err;
   socklen_t mss_len = sizeof mss;
   if (GET__MSS(__fds[i].fd, mss, mss_len) == -1) // minimum TP/IP segment size agreed on upon TCP's three way handshake
-    return DATA_INAVAILABLE;
+    return DATA_UNAVAILABLE;
   buf = malloc((size_t)mss);
   
   switch (recv(__fds[i].fd, buf, (size_t)mss, MSG_DONTWAIT | MSG_OOB))
@@ -317,13 +375,13 @@ static inline errcode_t net_data_available(pollfd_t *__fds, size_t i, void *buf)
       __err = errno;
       if (net_handle_recv_err(__fds, i, __err))  // critical error
         pthread_exit(NULL);         // termlinate thread
-      return DATA_INAVAILABLE;
+      return DATA_UNAVAILABLE;
 
     case 0:         // client disconnects
       free(buf);
       buf = NULL;
       cli_dc(__fds[i].fd, i);
-      return DATA_INAVAILABLE;
+      return DATA_UNAVAILABLE;
   
     default:      // data available
       return DATA_AVAILABLE;
@@ -333,15 +391,21 @@ static inline errcode_t net_data_available(pollfd_t *__fds, size_t i, void *buf)
 
 /// @brief iterate over client file descriptor to check which ones have data incoming
 /// @param __fds list of file descriptors handled by the thread
-static inline void net_check_clifds(pollfd_t *__fds)
+static inline void net_check_clifds(MYSQL *db_connect, pollfd_t *__fds)
 {
   size_t i = 0;
   void *buf = NULL;
-  while (__fds[i].fd != -1){                  // iterate over all fds
-    if (__fds[i].revents & POLLIN)            // check if revents POLLIN was activated
-      if (net_data_available(__fds, i, buf))  // check client's RCVBUFF is available
-        if (req_request_handle(buf))          // call for request module to parse and handle
-          return __FAILURE__;                 // logging will be in the request module
+  while (__fds[i].fd != -1 && ((__fds[i].revents & POLLIN) || (__fds[i].revents & POLLPRI))){
+    if (net_data_available(__fds, i, buf)){   // check if client's RCVBUFF is available
+      if (__fds[i].revents & POLLIN)
+        // call for request module to parse and handle data reception
+        if (req_request_handle(buf, __fds, i))
+          return __FAILURE__;
+      else if (__fds[i].revents & POLLPRI)
+        // call for request module to handle authentication
+        if (req_pri_request_handle(buf, __fds, i))
+          return __FAILURE__;
+    }
     ++i;
   }
 }
@@ -349,7 +413,7 @@ static inline void net_check_clifds(pollfd_t *__fds)
 
 /// @brief handler for incoming client data (called by the additionally created threads)
 /// @param args hint to the struct defined in /include/base.h
-/// @return errcode status
+/// @return errcode NULL for now
 void *net_communication_handler(void *args)
 {
   thread_arg_t *thread_arg = (thread_arg_t *)args;
@@ -358,23 +422,91 @@ void *net_communication_handler(void *args)
     pthread_mutex_unlock(&mutex_thread_id);
   #endif
   int32_t n_events;
-  errcode_t *status = (errcode_t*)malloc(sizeof (errcode_t));
-  *status = __SUCCESS__;
   for (;;)
   {
-    n_events = poll(__fds, CLIENTS_PER_THREAD, COMM_POLL_TIMEOUT);
+    while ((n_events = poll(__fds, CLIENTS_PER_THREAD, COMM_POLL_TIMEOUT)) == 0) // do testings on the timeout value
+      continue;
     switch (n_events){
-    case 0: continue; // no data
-    case -1:          // handling error
+    case -1:          // error occured
       if (net_handle_poll_err(errno))
-      {
-        status = D_NET_EXIT;
-        pthread_exit((void*)status);
-      }
+        pthread_exit(NULL);
       continue;
     default:          // incoming data
-      net_check_clifds(__fds);
+      net_check_clifds(thread_arg->db_connect, __fds);
     }
   }
-  pthread_exit((void*)status);
+  pthread_exit(NULL);
+}
+
+
+//==========================================================================
+//           COMMUNICATION PROTOCOL'S HANDSHAKES + AUTHENTICATION
+//==========================================================================
+
+/// @attention This section performs key exchanges over network it is not to be changed.
+/// @attention only if the other end of the communication agrees on it.
+/// @attention to ensure performance and valid communication cycles
+/// @brief These functions in this section will mostly be called by the request handler module
+/// @brief 1- send public key 
+/// @brief 2- recv encrypted symmetric key + encrypted secret bytes of len SECRET_SALT_LEN
+/// @brief 3- fetch the public and secret key from the database
+/// @brief 4- decrypt the secret key + decrypt the secret bytes 
+/// @brief 5- send the secret bytes encrypted by the secret key
+/// @brief 6- recv the connected flag ----> REQ_VALID_SYMKEY
+/// @param db_connect MYSQL db connection
+/// @param new_fd new client's file descriptor
+
+
+/// @brief __PRIORITY FOR AUTHENTICATION
+/// @brief 
+/// @param __fds 
+/// @param i 
+/// @param key 
+/// @param ss 
+static inline errcode_t recv_key(pollfd_t *__fds, size_t i, uint8_t *key, uint8_t *ss)
+{
+  ssize_t received;
+  void* buf = malloc(crypto_secretbox_KEYBYTES + SECRET_SALT_LEN);
+  received = recv(__fds[i].fd, buf, crypto_secretbox_KEYBYTES + SECRET_SALT_LEN, MSG_DONTWAIT | MSG_OOB);
+  errcode_t __err;
+  switch (received)
+  {
+    case -1:      // error
+      free(buf);
+      buf = NULL;
+      __err = errno;
+      if (net_handle_recv_err(__fds, i, __err))  // critical error
+        pthread_exit(NULL);         // termlinate thread
+      return DATA_UNAVAILABLE;
+    case 0:         // client disconnects
+      free(buf);
+      buf = NULL;
+      cli_dc(__fds[i].fd, i);
+      return DATA_UNAVAILABLE;      
+  }
+  if (received != crypto_secretbox_KEYBYTES + SECRET_SALT_LEN)
+    return LOG(NET_LOG_PATH, E_MISSING_DATA, "Network Warning missing data during reception of keys and salt from peer connection");
+  memcpy((void*)key, (const)buf, crypto_secretbox_KEYBYTES);
+  memcpy((void*)ss, (const)&buf[crypto_secretbox_KEYBYTES], SECRET_SALT_LEN);
+}
+
+void key_exchange(MYSQL *db_connect, pollfd_t *__fds, size_t i)
+{
+  uint8_t pk[crypto_box_PUBLICKEYBYTES]; // public key
+  uint8_t sk[crypto_box_SECRETKEYBYTES]; // secret key
+  uint8_t key[crypto_secretbox_KEYBYTES];// peer key
+  uint8_t ss[SECRET_SALT_LEN];           // secret salt
+
+  if (db_get_pk_sk(db_connect, pk, sk))
+    return __FAILURE__;
+  
+  if (sendall(__fds, i, (const void*)pk, crypto_box_PUBLICKEYBYTES)){ 
+    memset((void*)sk, 0x0, crypto_box_SECRETKEYBYTES); // set memory to 0 for security measures
+    return;
+  }
+
+  if (recv_key(__fds, i, key, ss))
+    return;
+
+
 }

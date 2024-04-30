@@ -35,8 +35,8 @@
 #define REQ_MODIF_SYMKEY    3  // client requests to repete key exchange
 
 //---USER REQUEST NUMBERS----|
-#define REQ_CREATE_U        15
-#define REQ_DELETE_U        16
+#define REQ_CREATE_USER        15
+#define REQ_DELETE_USER        16
 #define REQ_MODIF_UNAME     17
 #define REQ_MODIF_UPASS     18
 
@@ -57,5 +57,7 @@ extern errcode_t user_modif_password(char *request);
 
 
 extern errcode_t user_modif_sym_key(char *request);
+
+extern void key_exchange(MYSQL *db_connect, pollfd_t *__fds, size_t i);
 
 #endif

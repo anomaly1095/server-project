@@ -127,7 +127,7 @@ extern errcode_t  check_pass(const char *pass);
 extern errcode_t  total_cleanup(MYSQL *db_connect, pthread_t *threads, errcode_t __err);
 #define LOG(__lp, __err, __msg) log_write(__lp, __err, __msg)
 
-extern errcode_t req_request_handle(const void *req);
+extern errcode_t req_request_handle(const void *req, pollfd_t *__fds, size_t i);
 
 
 
