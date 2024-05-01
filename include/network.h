@@ -2,8 +2,7 @@
 
 #ifndef NETWORK_H
 #define NETWORK_H       1
-#include "security.h"
-
+#include "request.h"
 
 /*network errors 300->400*/
 #define ENET_OPT_FAIL       300
@@ -15,8 +14,13 @@
 #define E_KEY_EXCHANGE      306
 #define E_SEND_FAILED       307
 #define E_MISSING_DATA      308
+
 #define DATA_AVAILABLE      1
 #define DATA_UNAVAILABLE    0
+#define PING_HELLO          (unsigned char*)"Hello"
+#define SIZE_PING_HELLO     (size_t)__builtin_strlen(PING_HELLO)
+
+
 //===============================================
 //              ----MODES----
 //===============================================
@@ -120,5 +124,8 @@ int32_t __KEEPCNTR    = 5;  // 5 repetitions
 #else    
   int32_t memory_w = 0;
 #endif
+
+errcode_t co_add(co_t **co_head, co_t co_new);
+errcode_t co_rem(co_t **co_head, sockfd_t fd);
 
 #endif

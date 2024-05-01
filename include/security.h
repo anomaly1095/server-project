@@ -17,25 +17,28 @@
 #define E_ASYMM_DECRYPT 109
 #define E_SYMM_ENCRYPT  110
 #define E_SYMM_DECRYPT  111
+#define E_SEND_PKEY     112
+#define ESIZE_REQ_DATA  113
+
+//===============================================
+//          ----SIZEOF AUTH STREAMS----
+//===============================================
+
+
+#define SECRET_SALT_SIZE    32U
+
+#define ENCRYPTED_KEY_SIZE crypto_secretbox_KEYBYTES +\
+crypto_secretbox_MACBYTES
+
+#define ENCRYPTED_SALT_SIZE SECRET_SALT_SIZE +\
+crypto_secretbox_MACBYTES
+
+#define SIZE_K_SALT ENCRYPTED_KEY_SIZE +\
+ENCRYPTED_SALT_SIZE
 
 
 #define PATH_PHYSKEY    "/media/amnesia2/PKEY/keys/auth_init.bin"  // path to the key for first step authentication
 
-#define QUERY_KEY_DELETE "DELETE FROM KeyPairs;"
-
-#define QUERY_KEY_INSERT "INSERT INTO KeyPairs (pk, sk) VALUES (?, ?);"
-#define QUERY_KEY_INSERT_LEN (__builtin_strlen(QUERY_KEY_INSERT))
-
-#define QUERY_SELECT_PK  "SELECT pk FROM KeyPairs;"
-#define QUERY_SELECT_PK_LEN (__builtin_strlen(QUERY_SELECT_PK))
-
-#define QUERY_SELECT_SK  "SELECT sk FROM KeyPairs;"
-#define QUERY_SELECT_SK_LEN (__builtin_strlen(QUERY_SELECT_SK))
-
-#define QUERY_SELECT_PK_SK  "SELECT pk, sk FROM KeyPairs;"
-#define QUERY_SELECT_PK_SK_LEN (__builtin_strlen(QUERY_SELECT_PK_SK))
-
-#define SECRET_SALT_LEN    32LU
 
 /// @brief Initialize libsodium 
 /// @return errorcode
@@ -53,21 +56,20 @@ errcode_t secu_check_init_cred(const uint8_t *pass);
 /// @param total_cli__fds all file descriptors available accross all threads
 void net_init_clifd(pollfd_t **total_cli__fds);
 
-/// @brief get (public key) from database
-/// @param db_connect MYSQL db connection
+
+/// @brief encrypt m of length mlen with pk then store the cipher in c
 /// @param pk public key
-errcode_t db_get_pk(MYSQL *db_connect, uint8_t *pk);
+/// @param c buffer to contain cipher
+/// @param m message to encrypt
+/// @param mlen length of message to encrypt
+inline errcode_t secu_asymmetric_encrypt(const uint8_t *pk, uint8_t *c, const void *m, size_t mlen);
 
-/// @brief get (secret key) from database
-/// @param db_connect MYSQL db connection
-/// @param sk secret key
-errcode_t db_get_sk(MYSQL *db_connect, uint8_t *sk);
-
-/// @brief get (public key / secret key) from database
-/// @param db_connect MYSQL db connection
+/// @brief decrypt cipher stored in c of length clen with pk and sk then store result in m 
 /// @param pk public key
 /// @param sk secret key
-errcode_t db_get_pk_sk(MYSQL *db_connect, uint8_t *pk, uint8_t *sk);
-
+/// @param m buffer to store decrypted message
+/// @param c cipher to decrypt
+/// @param clen length of cipher to decrypt
+errcode_t secu_asymmetric_decrypt(const uint8_t *pk, const uint8_t *sk, void *m, const uint8_t *c, size_t clen);
 
 #endif

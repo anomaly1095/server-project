@@ -64,7 +64,7 @@ inline errcode_t check_pass(const char *pass)
 /// @param c char
 static inline errcode_t pass_check_char(const char c)
 {
-  // Check if the character is within the valid range of ASCII printable characters
+  // valid range of ASCII printable chars
   if (c < 32 || c > 126)
     return LOG(SECU_LOG_PATH, EINVALID_CHAR, "Invalid character found during passphrase check");
   return __SUCCESS__;
@@ -80,5 +80,9 @@ inline errcode_t total_cleanup(MYSQL *db_connect, pthread_t *threads, errcode_t 
   for (size_t i = 0; i < SERVER_THREAD_NO; i++)
     free(threads+i);
   mysql_close(db_connect);
+#if (!ATOMIC_SUPPORT)
+  pthread_mutex_destroy(mutex_thread_id);
+  pthread_mutex_destroy(mutex_memory_w);
+#endif
   return __err;
 }

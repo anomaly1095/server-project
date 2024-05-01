@@ -1,5 +1,8 @@
 #include "../include/network.h"
 
+static errcode_t net_ping_cli(pollfd_t *__fds, size_t i, const char *buf, size_t len);
+
+
 //==========================================================================
 //                        SERVER SETUP
 //==========================================================================
@@ -92,7 +95,6 @@ errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd)
 
   return __SUCCESS__;
 }
-
 
 //==========================================================================
 //                  EVENT HANDLING & POLLING NEW CONNECTIONS
@@ -208,6 +210,7 @@ errcode_t net_connection_handler(thread_arg_t *thread_arg)
 //==========================================================================
 //              EVENT HANDLING & POLLING COMMUNICATION AND DATA IO
 //==========================================================================
+
 
 /// @brief disconnect client bcs recv returned 0 (close fd and put last fd in i)
 /// @param __fds list of client file descriptors polled by this thread
@@ -358,6 +361,7 @@ static inline errcode_t sendall(pollfd_t *__fds, size_t i, const void *buf, size
 /// @param __fds list of file descriptors handled by the thread
 /// @param i index of the cli fd
 /// @param buf buffer to contain the stream
+/// @return 1--->DATA_AVAILABLE  0--->DATA_UNAVAILABLE
 static inline errcode_t net_data_available(pollfd_t *__fds, size_t i, void *buf)
 {
   
@@ -396,14 +400,16 @@ static inline void net_check_clifds(MYSQL *db_connect, pollfd_t *__fds)
   size_t i = 0;
   void *buf = NULL;
   while (__fds[i].fd != -1 && ((__fds[i].revents & POLLIN) || (__fds[i].revents & POLLPRI))){
+    if (buf)
+      free(buf);
     if (net_data_available(__fds, i, buf)){   // check if client's RCVBUFF is available
       if (__fds[i].revents & POLLIN)
         // call for request module to parse and handle data reception
-        if (req_request_handle(buf, __fds, i))
+        if (req_request_handle(buf, db_connect, __fds, i))
           return __FAILURE__;
       else if (__fds[i].revents & POLLPRI)
         // call for request module to handle authentication
-        if (req_pri_request_handle(buf, __fds, i))
+        if (req_pri_request_handle(buf, db_connect, __fds, i))
           return __FAILURE__;
     }
     ++i;
@@ -443,70 +449,99 @@ void *net_communication_handler(void *args)
 //           COMMUNICATION PROTOCOL'S HANDSHAKES + AUTHENTICATION
 //==========================================================================
 
+/// @section    CLIENT AUTHENTICATION OVER THE NETWORK + KEY-EXCHANGE PROTOCOL 
 /// @attention This section performs key exchanges over network it is not to be changed.
 /// @attention only if the other end of the communication agrees on it.
 /// @attention to ensure performance and valid communication cycles
 /// @brief These functions in this section will mostly be called by the request handler module
 /// @brief 1- send public key 
-/// @brief 2- recv encrypted symmetric key + encrypted secret bytes of len SECRET_SALT_LEN
+/// @brief 2- recv encrypted symmetric key + encrypted secret bytes
 /// @brief 3- fetch the public and secret key from the database
 /// @brief 4- decrypt the secret key + decrypt the secret bytes 
 /// @brief 5- send the secret bytes encrypted by the secret key
 /// @brief 6- recv the connected flag ----> REQ_VALID_SYMKEY
-/// @param db_connect MYSQL db connection
-/// @param new_fd new client's file descriptor
+/// @attention You should check which functions set key memory space to 0 after usage !!
 
 
-/// @brief __PRIORITY FOR AUTHENTICATION
-/// @brief 
-/// @param __fds 
-/// @param i 
-/// @param key 
-/// @param ss 
-static inline errcode_t recv_key(pollfd_t *__fds, size_t i, uint8_t *key, uint8_t *ss)
+
+
+/// @brief ping client and recv the same msg
+/// @param __fds list of file decriptors polled by the thread
+/// @param i index of client to ping
+/// @param buf buffer for sending
+/// @param len length of buffer
+/// @return 0 if the buff send was received else error
+static inline errcode_t net_ping_cli(pollfd_t *__fds, size_t i, const char *buf, size_t len)
 {
-  ssize_t received;
-  void* buf = malloc(crypto_secretbox_KEYBYTES + SECRET_SALT_LEN);
-  received = recv(__fds[i].fd, buf, crypto_secretbox_KEYBYTES + SECRET_SALT_LEN, MSG_DONTWAIT | MSG_OOB);
-  errcode_t __err;
-  switch (received)
-  {
-    case -1:      // error
-      free(buf);
-      buf = NULL;
-      __err = errno;
-      if (net_handle_recv_err(__fds, i, __err))  // critical error
-        pthread_exit(NULL);         // termlinate thread
-      return DATA_UNAVAILABLE;
-    case 0:         // client disconnects
-      free(buf);
-      buf = NULL;
-      cli_dc(__fds[i].fd, i);
-      return DATA_UNAVAILABLE;      
-  }
-  if (received != crypto_secretbox_KEYBYTES + SECRET_SALT_LEN)
-    return LOG(NET_LOG_PATH, E_MISSING_DATA, "Network Warning missing data during reception of keys and salt from peer connection");
-  memcpy((void*)key, (const)buf, crypto_secretbox_KEYBYTES);
-  memcpy((void*)ss, (const)&buf[crypto_secretbox_KEYBYTES], SECRET_SALT_LEN);
+  char recvbuf[len];
+  if (sendall(__fds, i, buf, len))
+    return __FAILURE__;
+  if (net_data_available(__fds, i, (void*)recvbuf))
+    return __FAILURE__;
+  return __SUCCESS__;
 }
 
-void key_exchange(MYSQL *db_connect, pollfd_t *__fds, size_t i)
-{
-  uint8_t pk[crypto_box_PUBLICKEYBYTES]; // public key
-  uint8_t sk[crypto_box_SECRETKEYBYTES]; // secret key
-  uint8_t key[crypto_secretbox_KEYBYTES];// peer key
-  uint8_t ss[SECRET_SALT_LEN];           // secret salt
 
+
+/// @brief send public key to client that didnt authenticate yet
+/// @param req request format: [code<4bytes>][size<4bytes>][id_user]
+/// @param db_connect MYSQSL db connection
+/// @param __fds client file descriptors
+/// @param i index of client fd to authenticate
+errcode_t net_auth_send_pubkey(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i)
+{
+  uint8_t pk[crypto_box_PUBLICKEYBYTES];
+  // get public key from database
+  if (db_get_pk(db_connect, pk))
+  {
+    bzero(pk, crypto_box_PUBLICKEYBYTES);
+    return __FAILURE__;
+  } 
+  // send public key to client
+  if (sendall(__fds, i, pk, crypto_box_PUBLICKEYBYTES))
+  {
+    bzero(pk, crypto_box_PUBLICKEYBYTES);
+    return LOG(SECU_LOG_PATH, E_SEND_PKEY, "Error sending primary key to client");
+  }
+  return __SUCCESS__;
+}
+
+
+/// @brief recv (symmetric)key and ping client
+/// @param req request format: [code<4bytes>][data]
+/// @param db_connect MYSQSL db connection
+/// @param __fds client file descriptors
+/// @param i index of client fd to authenticate
+errcode_t net_auth_recv_k(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i)
+{
+  uint8_t pk[crypto_box_PUBLICKEYBYTES], sk[crypto_box_SECRETKEYBYTES];
+  uint8_t enc_key[ENCRYPTED_KEY_SIZE], dec_key[crypto_secretbox_KEYBYTES];
+
+  // offset of 4 for reqcode
+  memcpy((void*)enc_key, &req[4], ENCRYPTED_KEY_SIZE);
+
+  // fetch pk and sk from db
   if (db_get_pk_sk(db_connect, pk, sk))
     return __FAILURE__;
+
+  // decrypt the key
+  if (secu_asymmetric_decrypt(pk, sk, dec_key, enc_key, ENCRYPTED_KEY_SIZE))
+    return __FAILURE__;
+
+  bzero(pk, crypto_box_PUBLICKEYBYTES);
+  bzero(sk, crypto_box_SECRETKEYBYTES);
+  bzero(enc_key, crypto_box_PUBLICKEYBYTES);
+
+  // hello ping newly connected client
+  if (net_ping_cli(__fds, i, PING_HELLO, SIZE_PING_HELLO))
+    return __FAILURE__;
   
-  if (sendall(__fds, i, (const void*)pk, crypto_box_PUBLICKEYBYTES)){ 
-    memset((void*)sk, 0x0, crypto_box_SECRETKEYBYTES); // set memory to 0 for security measures
-    return;
-  }
+  // save keys
+  
 
-  if (recv_key(__fds, i, key, ss))
-    return;
-
-
+  return __SUCCESS__;
 }
+
+
+
+

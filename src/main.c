@@ -23,13 +23,13 @@ errcode_t main(int32_t argc, const char **argv)
   run_threads(threads, &thread_arg);
 
   // run main thread to handle incoming connections
-  if (status = net_connection_handler(thread_arg.server_addr, thread_arg.server_fd, thread_arg.total_cli__fds))
+  if (status = net_connection_handler(&thread_arg))
     return total_cleanup(thread_arg.db_connect, threads, status);
   
   #if (!ATOMIC_SUPPORT)
     pthread_mutex_destroy(&mutex_thread_id);
     pthread_mutex_destroy(&mutex_memory_w);
   #endif
-  return total_cleanup(thread_arg.db_connect, threads, __SUCCESS__); // not yet sure about this step
+  return total_cleanup(thread_arg.db_connect, threads, __SUCCESS__);
 }
 
