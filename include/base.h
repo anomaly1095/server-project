@@ -34,7 +34,7 @@ typedef struct hostent  hostent_t;
 #define E_INIT        011
 #define E_GETPASS     012
 #define EINVALID_CHAR 013
-
+#define EMALLOC_FAIL  014
 /// @brief Danger return values (cleanup and exit)
 #define D_NET_EXIT    014
 #define D_SECU_EXIT   015

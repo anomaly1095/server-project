@@ -543,5 +543,3 @@ errcode_t net_auth_recv_k(const void *req, MYSQL *db_connect, pollfd_t *__fds, s
 }
 
 
-
-
