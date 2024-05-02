@@ -54,7 +54,9 @@ static inline errcode_t req_pri_run_request(const void *req, MYSQL *db_connect, 
 {
   switch (reqcode)
   {
-    case REQ_SEND_ASYMKEY: 	break;
+    case REQ_SEND_ASYMKEY: 
+      net_send_pk(db_connect, __fds, i);
+      break;
     case REQ_RECV_K: 	      break;
     case REQ_VALID_SYMKEY: 	break;
     case REQ_MODIF_SYMKEY: 	break;

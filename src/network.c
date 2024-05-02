@@ -520,7 +520,14 @@ void *net_communication_handler(void *args)
 /// @attention You should check which functions set key memory space to 0 after usage !!
 
 
-errcode_t send_pk()
+errcode_t net_send_pk(MYSQL *db_connect, pollfd_t *__fds, size_t i)
 {
-
+  uint8_t pk[crypto_box_PUBLICKEYBYTES];
+  if (db_get_pk(db_connect, pk))
+    return __FAILURE__;
+  if (sendall(db_connect, __fds, i, pk, crypto_box_PUBLICKEYBYTES))
+    return LOG(SECU_LOG_PATH, E_SEND_PK, E_SEND_PK_M);
+  
+  bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
+  return __SUCCESS__;
 }

@@ -45,7 +45,7 @@
 #define E_ASYMM_DECRYPT 109
 #define E_SYMM_ENCRYPT  110
 #define E_SYMM_DECRYPT  111
-#define E_SEND_PKEY     112
+#define E_SEND_PK       112
 #define ESIZE_REQ_DATA  113
 
 #define ESODIUM_INIT_M  "Security ctx_init failed"
@@ -59,6 +59,7 @@
 #define EKEYPAIR_SAVE_M "Security keypair saving failed"
 #define E_ASYMM_ENCRYPT_M "Security Error during encryption with public key"
 #define E_ASYMM_DECRYPT_M "Security Error during decryption with key pair"
+#define E_SEND_PK_M     "Error occured during sending of public key to client"
 
 //=========================================================================
 // database ERRORS: 200->300
