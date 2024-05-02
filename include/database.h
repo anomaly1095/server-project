@@ -29,10 +29,12 @@
 
 ///@brief BIGINT FOR THE ID
 typedef uint64_t id64_t;
+typedef uint32_t id32_t;
 
 
 ///@brief DATABASE CREDENTIALS FOR AUTHENTICATION 
-typedef struct DBCreds{
+typedef struct DBCreds
+{
     char host[DB_SIZE_HOST];
     char user[DB_SIZE_USER];
     char passwd[DB_SIZE_PASS];
@@ -85,10 +87,10 @@ typedef struct Connection
   uint64_t co_id;
   sockfd_t co_fd;
   flag_t co_auth_status;  // steps of authentication
-  char co_last_co[20]; 
+  char co_last_co[SIZE_MYSQL_DT];
   uint16_t co_af;  // address family
   uint16_t co_port;  // port
-  uint8_t co_ip_addr[16]; // fits ipv4 or ipv6
+  uint8_t co_ip_addr[SIZE_IP_ADDR]; // fits ipv4 or ipv6
 }co_t;
 
 

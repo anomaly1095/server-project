@@ -456,14 +456,42 @@ inline errcode_t db_co_del_byid(MYSQL *db_connect, id64_t co_id)
 /// @param co_id id of the connection
 errcode_t db_co_get_all_by_id(MYSQL *db_connect, co_t *co, id64_t co_id)
 {
-  MYSQL_BIND result;
-    
+  MYSQL_RES *res;
+  MYSQL_ROW row;
   char query[QUERY_CO_SELECT_ALL_BY_ID_LEN + 24];
+
   // Construct the query
-  sprintf(query, QUERY_CO_DEL_BYID, co_id);
+  sprintf(query, QUERY_CO_SELECT_ALL_BY_ID, co_id);
+
+  // Execute the query
+  if (mysql_real_query(db_connect, query, strlen(query)) != 0)
+      return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+
+  // Store the result set
+  if (!(res = mysql_store_result(db_connect)))
+      return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+
+  // Fetch the row
+  row = mysql_fetch_row(res);
+  if (!row){
+      mysql_free_result(res);
+      return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect)); // Row not found
+  }
+
+  co = (co_t*)malloc(sizeof co);
+  co->co_id = co_id;
+  co->co_fd = atoi(row[1]);   // Convert char* to int32_t
+  co->co_auth_status = row[2];// uint8_t
+  memcpy((void*)co->co_last_co, (const void*)row[3], SIZE_MYSQL_DT);
+  co->co_last_co = row[3];
 
 
+  // Free the result set
+  mysql_free_result(res);
+
+  return __SUCCESS__;
 }
+
 
 
 /// @attention Memory will be allocated internally
