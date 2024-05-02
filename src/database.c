@@ -55,13 +55,13 @@ static inline errcode_t db_get_auth(db_creds_t *creds)
 {
   memset((void*)creds, 0x0, sizeof creds);
   if (db_get_auth_host(creds->host))
-    return LOG(DB_LOG_PATH, EDB_W_HOST, "Error getting host");
+    return LOG(DB_LOG_PATH, EDB_W_HOST, EDB_W_HOST_M);
   if (db_get_auth_user(creds->user))
-    return LOG(DB_LOG_PATH, EDB_W_USER, "Error getting username");
+    return LOG(DB_LOG_PATH, EDB_W_USER, EDB_W_USER_M);
   if (db_get_auth_pass(creds->passwd))
-    return LOG(DB_LOG_PATH, EDB_W_PASSWD, "Error getting password");
+    return LOG(DB_LOG_PATH, EDB_W_PASSWD, EDB_W_PASSWD_M);
   if (db_get_auth_db(creds->db))
-    return LOG(DB_LOG_PATH, EDB_W_DB, "Error getting database name");
+    return LOG(DB_LOG_PATH, EDB_W_DB, EDB_W_DB_M);
   creds->port = 3306;
   return __SUCCESS__;
 }
@@ -79,13 +79,13 @@ errcode_t db_init(MYSQL **db_connect)
   db_creds_t creds;
   // initialize db
   if ( !(*db_connect = mysql_init(NULL)))
-    return LOG(DB_LOG_PATH, EDB_CO_INIT, "Database error during db_connect");
+    return LOG(DB_LOG_PATH, EDB_CO_INIT, EDB_CO_INIT_M);
   // get admin creds
   if (db_get_auth(&creds))
     return EDB_AUTH;
   // connect to db
   if (!mysql_real_connect(*db_connect, creds.host, creds.user, creds.passwd, creds.db, creds.port, NULL, 0x0))
-    return LOG(DB_LOG_PATH, EDB_CONNECT, "Error connecting to database");
+    return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
 
   return __SUCCESS__;
 }
@@ -552,7 +552,7 @@ static inline void db_co_res_cpy(co_t *co, MYSQL_BIND *result)
 /// @param db_connect MYSQL database connection
 /// @param co non allocated connection object
 /// @param co_id id of the connection
-errcode_t db_co_get_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
+errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND param;
@@ -581,7 +581,7 @@ errcode_t db_co_get_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
   // Bind result set columns to variables
-  db_result_bind(result);
+  db_co_result_bind(result);
 
   if (mysql_stmt_bind_result(stmt, result))
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
@@ -592,7 +592,7 @@ errcode_t db_co_get_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
 
   // Allocate memory for the result set
   if (!(*co = (co_t*)malloc(sizeof(co_t))))
-    return LOG(DB_LOG_PATH, EMALLOC_FAIL, "Error: memory allocation failed for co in db_co_get_all_by_id()");
+    return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M1);
 
   // Fetch row
   db_co_res_cpy(*co, result);
@@ -615,7 +615,7 @@ cleanup:
 /// @param co non allocated connection object
 /// @param nrow number of rows returned by the query 
 /// @param co_fd file descriptor number we are looking for
-errcode_t db_co_get_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const sockfd_t co_fd)
+errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const sockfd_t co_fd)
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND param;
@@ -644,7 +644,7 @@ errcode_t db_co_get_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const 
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
   // Bind result set columns to variables
-  db_result_bind(result);
+  db_co_result_bind(result);
 
   if (mysql_stmt_bind_result(stmt, result))
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
@@ -655,11 +655,11 @@ errcode_t db_co_get_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const 
 
   // Get the number of rows
   if (!(*nrow = mysql_stmt_num_rows(stmt)))
-    return LOG(DB_LOG_PATH, WDB_NO_ROWS, "Warning: no rows found with that file descriptor");
+    return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M1);
 
   // Allocate memory for the result set
   if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t))))
-    return LOG(DB_LOG_PATH, EMALLOC_FAIL, "Error: memory allocation failed for co in db_co_get_all_by_fd()");
+    return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M2);
 
   // Fetch rows
   i = 0;
@@ -685,7 +685,7 @@ cleanup:
 /// @param co non allocated connection object
 /// @param nrow number of rows returned by the query 
 /// @param co_auth_status connection status
-errcode_t db_co_get_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow, const flag_t co_auth_status)
+errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow, const flag_t co_auth_status)
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND param;
@@ -713,7 +713,7 @@ errcode_t db_co_get_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
   // Bind result set columns to variables
-  db_result_bind(result);
+  db_co_result_bind(result);
   
   if (mysql_stmt_bind_result(stmt, result))
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
@@ -724,11 +724,11 @@ errcode_t db_co_get_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
 
   // Get the number of rows
   if (!(*nrow = mysql_stmt_num_rows(stmt)))
-    return LOG(DB_LOG_PATH, WDB_NO_ROWS, "Warning: no rows found with that authentication status");
+    return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M2);
 
   // Allocate memory for the result set
   if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t))))
-    return LOG(DB_LOG_PATH, EMALLOC_FAIL, "Error: memory allocation failed for co in db_co_get_all_by_auth_stat()");
+    return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M3);
 
   // Fetch rows
   i = 0;
@@ -754,7 +754,7 @@ cleanup:
 /// @param co non allocated connection object
 /// @param nrow number of rows returned by the query 
 /// @param co_ip_addr ip address big endian byte order
-errcode_t db_co_get_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr)
+errcode_t db_co_sel_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr)
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND param;
@@ -782,7 +782,7 @@ errcode_t db_co_get_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const 
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
   // Bind result set columns to variables
-  db_result_bind(result);
+  db_co_result_bind(result);
   
   if (mysql_stmt_bind_result(stmt, result))
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
@@ -793,11 +793,11 @@ errcode_t db_co_get_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const 
 
   // Get the number of rows
   if (!(*nrow = mysql_stmt_num_rows(stmt)))
-    return LOG(DB_LOG_PATH, WDB_NO_ROWS, "Warning: no rows found with that ip address");
+    return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M3);
 
   // Allocate memory for the result set
   if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t))))
-    return LOG(DB_LOG_PATH, EMALLOC_FAIL, "Error: memory allocation failed for co in db_co_get_all_by_ip()");
+    return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M4);
 
   // Fetch rows
   i = 0;
@@ -813,6 +813,70 @@ cleanup:
 
   mysql_stmt_free_result(stmt);
   mysql_stmt_close(stmt);
+  return __SUCCESS__;
+}
+
+/// @attention Memory will be allocated internally for co objects and nrow set internally
+/// @brief get symmetric key for client that has that address pair (ip, port)
+/// @param db_connect MYSQL database connection
+/// @param key symmetric key
+/// @param co_ip_addr connection ip address big endian byte order
+/// @param co_port  connection port big endian byte order
+errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, uint8_t *key, const uint8_t *co_ip_addr, const in_port_t co_port)
+{
+  MYSQL_STMT *stmt;
+  MYSQL_BIND params[2]; // Number of columns in the result set
+  MYSQL_BIND result;
+  int32_t nrow;
+
+  if (!(stmt = mysql_stmt_init(db_connect)))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
+
+  // Prepare the statement
+  if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_KEY_BY_ADDR, QUERY_CO_SEL_KEY_BY_ADDR_LEN))
+    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+
+  bzero((void*)params, sizeof(params));
+  params[0].buffer_type = MYSQL_TYPE_BLOB;
+  params[0].buffer = (void*)co_ip_addr;
+  params[0].buffer_length = SIZE_IP_ADDR;
+
+  params[1].buffer_type = MYSQL_TYPE_SHORT;
+  params[1].buffer = (void*)&co_port;
+  params[1].buffer_length = sizeof co_port;
+
+  // Bind the parameters to the statement
+  if (mysql_stmt_bind_param(stmt, params))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+
+  // Execute the statement
+  if (mysql_stmt_execute(stmt))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+
+  // Bind result set columns to variables
+  result.buffer_type = MYSQL_TYPE_BLOB;
+  result.buffer = key;
+  result.buffer_length = crypto_secretbox_KEYBYTES;
+
+  if (mysql_stmt_bind_result(stmt, &result))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+
+  // Store the result set
+  if (mysql_stmt_store_result(stmt))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+
+  // Get the number of rows
+  if (!(nrow = mysql_stmt_num_rows(stmt)))
+    return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M4);
+
+  // Fetch rows
+  if (!mysql_stmt_fetch(stmt))
+    memcpy((void*)key, (const void*)result.buffer, crypto_secretbox_KEYBYTES);
+
+  // Cleanup
+  mysql_stmt_free_result(stmt);
+  mysql_stmt_close(stmt);
+
   return __SUCCESS__;
 }
 
@@ -905,6 +969,21 @@ inline errcode_t db_co_up_auth_stat_by_id(MYSQL *db_connect, flag_t co_auth_stat
 {
   char query[QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID_LEN + 24 + 8];
   sprintf(query, QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID, co_auth_status, co_id);
+  // Execute the query
+  if (mysql_real_query(db_connect, query, strlen(query)))
+    return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+  
+  return __SUCCESS__;
+}
+
+/// @brief update connection row to <co_auth_status> status that has fd = <co_fd>
+/// @param db_connect MYSQL database connection
+/// @param co_auth_status new connection status
+/// @param co_id file descriptor
+inline errcode_t db_co_up_auth_stat_by_fd(MYSQL *db_connect, flag_t co_auth_status, sockfd_t co_fd)
+{
+  char query[QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD_LEN + 24 + 8];
+  sprintf(query, QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD, co_auth_status, co_fd);
   // Execute the query
   if (mysql_real_query(db_connect, query, strlen(query)))
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));

@@ -42,7 +42,7 @@ inline errcode_t get_pass(char *pass)
 {
   // get password from stdin
   if (!fgets(pass, MAX_AUTH_SIZE, stdin))
-    return LOG(SECU_LOG_PATH, E_GETPASS, "Error getting password)");
+    return LOG(SECU_LOG_PATH, E_GETPASS, E_GETPASS_M);
   pass[strlen(pass)] = 0x0;
   return __SUCCESS__;
 }
@@ -53,10 +53,10 @@ inline errcode_t check_pass(const char *pass)
 {
   size_t plen = strlen(pass);
   if (plen > MAX_AUTH_SIZE)
-    return LOG(SECU_LOG_PATH, E_PASS_LEN, "Security invalid password length ");
+    return LOG(SECU_LOG_PATH, E_PASS_LEN, E_PASS_LEN_M);
   for (size_t i = 0; i < plen; i++)
     if (pass_check_char(pass[i]))
-      return LOG(SECU_LOG_PATH, E_INVAL_PASS, "Security invalid password character");
+      return LOG(SECU_LOG_PATH, E_INVAL_PASS, E_INVAL_PASS_M);
   return __SUCCESS__;
 }
 
@@ -66,23 +66,6 @@ static inline errcode_t pass_check_char(const char c)
 {
   // valid range of ASCII printable chars
   if (c < 32 || c > 126)
-    return LOG(SECU_LOG_PATH, EINVALID_CHAR, "Invalid character found during passphrase check");
+    return LOG(SECU_LOG_PATH, EINVALID_CHAR, EINVALID_CHAR_M);
   return __SUCCESS__;
-}
-
-/// @brief cleanups in case of killing/terminating the process
-/// (no security keys to destroy since all will be generated again each time the process in ran)
-/// @param db_connect database connection
-/// @param threads list of threads 
-/// @param __err errorcode
-inline errcode_t total_cleanup(MYSQL *db_connect, pthread_t *threads, errcode_t __err)
-{
-  for (size_t i = 0; i < SERVER_THREAD_NO; i++)
-    free(threads+i);
-  mysql_close(db_connect);
-#if (!ATOMIC_SUPPORT)
-  pthread_mutex_destroy(mutex_thread_id);
-  pthread_mutex_destroy(mutex_memory_w);
-#endif
-  return __err;
 }

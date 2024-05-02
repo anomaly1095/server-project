@@ -9,7 +9,7 @@
 inline errcode_t secu_init(void)
 {
   if (sodium_init() == -1)
-    return LOG(SECU_LOG_PATH, ESODIUM_INIT, "Security ctx_init failed");
+    return LOG(SECU_LOG_PATH, ESODIUM_INIT, ESODIUM_INIT_M);
   return __SUCCESS__;
 }
 
@@ -21,10 +21,10 @@ static inline errcode_t get_auth_key(uint8_t *c)
   FILE *db_privf;
   
   if (!(db_privf = fopen(PATH_PHYSKEY, "rb")))
-    return LOG(DB_LOG_PATH, E_FOPEN, "Error opening authentication private key file");
+    return LOG(DB_LOG_PATH, E_FOPEN, E_FOPEN_M);
   
   if (fread((void*)c, 1, crypto_hash_sha512_BYTES, db_privf) < crypto_hash_sha512_BYTES)
-    return LOG(DB_LOG_PATH, E_FREAD, "Error reading authentication private key file missing data!");
+    return LOG(DB_LOG_PATH, E_FREAD, E_FREAD_M);
   
   fclose(db_privf);
   return __SUCCESS__;
@@ -39,13 +39,13 @@ errcode_t secu_check_init_cred(const uint8_t *pass)
   uint8_t c2[crypto_hash_sha512_BYTES];
   
   if (crypto_hash_sha512(c1, pass, strlen(pass)))
-    return LOG(SECU_LOG_PATH, E_SHA512, "SHA512 cipher failed");
+    return LOG(SECU_LOG_PATH, E_SHA512, E_SHA512);
   
   if (get_auth_key(c2))
     return E_AUTHKEY;
   
   if (memcmp((const void*)c1, (const void*)c2, crypto_hash_sha512_BYTES) != 0)
-    return LOG(SECU_LOG_PATH, E_WRONG_CREDS, "Error wrong credentials");
+    return LOG(SECU_LOG_PATH, E_WRONG_CREDS, E_WRONG_CREDS_M);
   
   return __SUCCESS__;
 }
@@ -65,19 +65,19 @@ errcode_t secu_init_keys(MYSQL *db_connect)
   {
     bzero(pk, crypto_box_PUBLICKEYBYTES);
     bzero(pk, crypto_box_SECRETKEYBYTES);   
-    return LOG(SECU_LOG_PATH, EKEYPAIR_GEN, "Security keypair generation failed");
+    return LOG(SECU_LOG_PATH, EKEYPAIR_GEN, EKEYPAIR_GEN_M);
   }
   if (secu_key_del(db_connect))
   {
     bzero(pk, crypto_box_PUBLICKEYBYTES);
     bzero(pk, crypto_box_SECRETKEYBYTES);   
-    return LOG(SECU_LOG_PATH, EKEYPAIR_DEL, "Security keypair deletion failed");    
+    return LOG(SECU_LOG_PATH, EKEYPAIR_DEL, EKEYPAIR_DEL_M);    
   }
   if (secu_key_save(pk, sk, db_connect))
   {
     bzero(pk, crypto_box_PUBLICKEYBYTES);
     bzero(pk, crypto_box_SECRETKEYBYTES);   
-    return LOG(SECU_LOG_PATH, EKEYPAIR_SAVE, "Security keypair saving failed");
+    return LOG(SECU_LOG_PATH, EKEYPAIR_SAVE, EKEYPAIR_SAVE_M);
   }
   bzero(pk, crypto_box_PUBLICKEYBYTES);
   bzero(pk, crypto_box_SECRETKEYBYTES);
@@ -98,7 +98,7 @@ inline errcode_t secu_asymmetric_encrypt(const uint8_t *pk, uint8_t *c, const vo
 {
   const uint8_t *__m = (const uint8_t *)m;
   if (crypto_box_seal(c, __m, mlen, pk))
-    return LOG(SECU_LOG_PATH, E_ASYMM_ENCRYPT, "Security Error during encryption with public key");
+    return LOG(SECU_LOG_PATH, E_ASYMM_ENCRYPT, E_ASYMM_ENCRYPT_M);
   return __SUCCESS__;
 }
 
@@ -112,7 +112,7 @@ inline errcode_t secu_asymmetric_decrypt(const uint8_t *pk, const uint8_t *sk, v
 {
   uint8_t *__m = (uint8_t *)m;
   if (crypto_box_seal_open(__m, c, clen, pk, sk))
-    return LOG(SECU_LOG_PATH, E_ASYMM_DECRYPT, "Security Error during decryption with key pair");
+    return LOG(SECU_LOG_PATH, E_ASYMM_DECRYPT, E_ASYMM_DECRYPT_M);
   return __SUCCESS__;
 }
 

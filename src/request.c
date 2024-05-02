@@ -7,7 +7,7 @@
 /// @brief this function sends the stream to the correct parsing function for that reqcode
 /// @param req binary stream of data coming from network
 /// @param reqcode code of the request 
-static errcode_t req_run_request(const void *req, MYSQL *db_connect, uint32_t reqcode, pollfd_t *__fds, size_t i)
+static inline errcode_t req_run_request(const void *req, MYSQL *db_connect, uint32_t reqcode, pollfd_t *__fds, size_t i)
 {
   switch (reqcode)
   {
@@ -23,7 +23,7 @@ static errcode_t req_run_request(const void *req, MYSQL *db_connect, uint32_t re
     // case : 	break;
     // case : 	break;
     // case : 	break;
-    default: return LOG(REQ_LOG_PATH, EUNDEF_REQ_CODE, "Undefined request code");
+    default: return LOG(REQ_LOG_PATH, EUNDEF_REQ_CODE, EUNDEF_REQ_CODE_M);
   }
   return __SUCCESS__;
 }
@@ -33,7 +33,7 @@ static errcode_t req_run_request(const void *req, MYSQL *db_connect, uint32_t re
 
 /// @brief get the incoming stream of data from the socket
 /// @param req stream of data coming from network module recv()
-inline errcode_t req_request_handle(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i)
+errcode_t req_request_handle(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i)
 {
   uint32_t reqcode;
   memcpy((void*)&reqcode, req, 4); // get request code
@@ -50,18 +50,18 @@ inline errcode_t req_request_handle(const void *req, MYSQL *db_connect, pollfd_t
 /// @brief this function sends the stream to the correct parsing function for that reqcode
 /// @param req binary stream of data coming from network
 /// @param reqcode code of the request 
-static errcode_t req_pri_run_request(const void *req, MYSQL *db_connect, uint32_t reqcode, pollfd_t *__fds, size_t i)
+static inline errcode_t req_pri_run_request(const void *req, MYSQL *db_connect, uint32_t reqcode, pollfd_t *__fds, size_t i)
 {
   switch (reqcode)
   {
     case REQ_SEND_ASYMKEY: 	break;
-    case REQ_RECV_K: 	break;
+    case REQ_RECV_K: 	      break;
     case REQ_VALID_SYMKEY: 	break;
     case REQ_MODIF_SYMKEY: 	break;
     case 4: 	break;
     case 5: 	break;
     case 6: 	break;
-    default: return LOG(REQ_LOG_PATH, EUNDEF_REQ_CODE, "Undefined request code");
+    default: return LOG(REQ_LOG_PATH, EUNDEF_REQ_CODE, EUNDEF_REQ_CODE_M);
   }
   return __SUCCESS__;
 }
@@ -70,7 +70,7 @@ static errcode_t req_pri_run_request(const void *req, MYSQL *db_connect, uint32_
 /// @brief __PRIORITY FOR AUTHENTICATION
 /// @brief get priority data for client authentication
 /// @param req stream of data coming from network module recv()
-inline errcode_t req_pri_request_handle(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i)
+errcode_t req_pri_request_handle(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i)
 {
   uint32_t reqcode;
   memcpy((void*)&reqcode, req, 4); // get request code

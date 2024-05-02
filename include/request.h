@@ -3,7 +3,7 @@
 
 #ifndef REQUEST_H
 #define REQUEST_H     1
-#include "database.h"
+#include "threads.h"
 
 /*==========================================================================================
 |Requests are gona be sent from the client to the server                                    |
@@ -20,9 +20,6 @@
 |  |
 |  |
 /*==========================================================================================*/
-// request errors: 400
-#define EUNDEF_REQ_CODE     400
-#define EREQ_FAIL           401
 
 //===========================|
 //------REQUEST NUMBERS------|

@@ -19,6 +19,11 @@ errcode_t main(int32_t argc, const char **argv)
     pthread_mutex_init(&mutex_thread_id, NULL);
     pthread_mutex_init(&mutex_memory_w, NULL);
   #endif
+  
+  pthread_mutex_init(&mutex_connection_global, NULL);
+  pthread_mutex_init(&mutex_connection_fd, NULL);
+  pthread_mutex_init(&mutex_connection_auth_status, NULL);
+
   // run child threads to handle incoming data and communications
   run_threads(threads, &thread_arg);
 

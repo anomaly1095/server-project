@@ -15,7 +15,7 @@ static errcode_t net_ping_cli(pollfd_t *__fds, size_t i, const char *buf, size_t
 static inline errcode_t net_get_ipaddr_byhost(sockaddr_t *server_addr) {
   struct hostent *hptr;
   if (!(hptr = gethostbyname(SERVER_DOMAIN)))
-    return LOG(NET_LOG_PATH, h_errno, "Error during server DNS lookup");
+    return LOG(NET_LOG_PATH, h_errno, EGET_HOSTBYNAME_M);
   // get the first address binded to that ip address
   switch (hptr->h_length)
   {
@@ -27,7 +27,7 @@ static inline errcode_t net_get_ipaddr_byhost(sockaddr_t *server_addr) {
     server_addr->sa_family = AF_INET6;
     inet_pton(AF_INET6, hptr->h_addr_list[0], &server_addr->sa_data[2]);
     return __SUCCESS__;
-  default: return LOG(NET_LOG_PATH, E_INVAL_ADDRLEN, "Invalid address len resulting of DNS resolving");
+  default: return LOG(NET_LOG_PATH, E_INVAL_ADDRLEN, E_INVAL_ADDRLEN_M);
   }
 }
 #endif
@@ -100,6 +100,33 @@ errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd)
 //                  EVENT HANDLING & POLLING NEW CONNECTIONS
 //==========================================================================
 
+/// @brief 
+/// @param co_new 
+/// @param new_cli_fd 
+/// @param new_addr 
+/// @param addr_len 
+/// @return 
+static errcode_t net_co_create(co_t *co_new, sockfd_t new_cli_fd, sockaddr_t new_addr, socklen_t addr_len)
+{
+  // Check if the size of the address structure matches the expected size for IPv4 or IPv6
+  if (addr_len != sizeof(struct sockaddr_in) && addr_len != sizeof(struct sockaddr_in6))
+    return LOG(NET_LOG_PATH, E_UNSUPPORTED_AF, E_UNSUPPORTED_AF_M);
+
+  // Set basic fields
+  co_new->co_fd = new_cli_fd; 
+  co_new->co_auth_status = CO_FLAG_NO_AUTH;
+  co_new->co_af = new_addr.sa_family;
+  memcpy((void*)&co_new->co_port, (const void*)new_addr.sa_data, sizeof(in_port_t));
+
+  // Copy IP address
+  if (new_addr.sa_family == AF_INET)
+    memcpy(co_new->co_ip_addr, &((struct sockaddr_in*)&new_addr)->sin_addr, sizeof(struct in_addr));
+  else if (new_addr.sa_family == AF_INET6)
+    memcpy(co_new->co_ip_addr, &((struct sockaddr_in6*)&new_addr)->sin6_addr, sizeof(struct in6_addr));
+  bzero((void*)co_new->co_key, crypto_secretbox_KEYBYTES);
+  return __SUCCESS__;
+}
+
 
 /// @brief poll error handler 
 /// @param __err value of errno passed as argument
@@ -137,57 +164,73 @@ inline void net_init_clifd(pollfd_t **total_cli__fds)
 }
 
 
-/// @brief add new client connection to pollfds being bolled by specific thread thread's 
-/// @param thread_cli__fds file descriptors being polled by a thread
-/// @param new_cli_fd new client's file descriptor
-static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, sockfd_t new_cli_fd)
+/// @brief 
+/// @param thread_cli__fds 
+/// @param db_connect 
+/// @param new_cli_fd 
+/// @param new_addr 
+/// @param addr_len 
+/// @return 
+static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, MYSQL *db_connect, sockfd_t new_cli_fd, sockaddr_t new_addr, socklen_t addr_len)
 {
+  co_t co_new;
   for (size_t i = 0; i < CLIENTS_PER_THREAD; i++)
-    if (thread_cli__fds[i].fd == -1){
+    if (thread_cli__fds[i].fd == -1)
+    {
       thread_cli__fds[i].fd = new_cli_fd;
       thread_cli__fds[i].events = POLLIN | POLLPRI;  // we set the events to priority bcs the client did not auth yet
+      // create connection instance
+      if (net_co_create(&co_new, new_cli_fd, new_addr, addr_len))
+        return __FAILURE__;
+      // save instance to database Connection table
+      pthread_mutex_lock(&mutex_connection_global); // lock the mutex for writing to db conenction object
+      if (db_co_insert(db_connect, co_new)){
+        pthread_mutex_unlock(&mutex_connection_global); // unlock the mutex 
+        return __FAILURE__;
+      }
+      pthread_mutex_unlock(&mutex_connection_global); // unlock the mutex 
       return __SUCCESS__;
     }
   return MAX_FDS_IN_THREAD;
 }
 
 
-/// @brief add new client connection to pollfd being polled by one of the thread
-/// @param total_cli__fds all file descriptors available accross all threads
-/// @param new_cli_fd new client's file descriptor
-static inline errcode_t net_add_clifd(pollfd_t **total_cli__fds, sockfd_t new_cli_fd)
+/// @brief 
+/// @param thread_arg 
+/// @param new_cli_fd 
+/// @param new_addr 
+/// @param addr_len 
+/// @return 
+static inline errcode_t net_add_clifd(thread_arg_t *thread_arg, sockfd_t new_cli_fd, sockaddr_t new_addr, socklen_t addr_len)
 {
   for (size_t i = 0; i < SERVER_THREAD_NO; i++)
-    if (net_add_clifd_to_thread(total_cli__fds[i], new_cli_fd))
-    return LOG(NET_LOG_PATH, MAX_FDS_IN_PROGRAM, "WARNING max_file descriptors reached for system");
-
+    if (net_add_clifd_to_thread(thread_arg->total_cli__fds[i], thread_arg->db_connect, new_cli_fd, new_addr, addr_len))
+      return LOG(NET_LOG_PATH, MAX_FDS_IN_PROGRAM, MAX_FDS_IN_PROGRAM_M);
   return __SUCCESS__;
 }
 
 
-/// @brief accept new connection from client and add it to one of pollfds managed by threads
-/// @param server_addr server address struct
-/// @param server_fd server file descriptor
-/// @param total_cli__fds all file descriptors available accross all threads
+/// @brief 
+/// @param thread_arg 
+/// @return 
 static inline errcode_t net_accept_save_new_co(thread_arg_t *thread_arg)
 {
   sockaddr_t new_addr;
   sockfd_t new_fd;
+  socklen_t addr_len;
   // accept co
-  if ((new_fd = accept(thread_arg->server_fd, NULL, NULL)) == -1)
+  if ((new_fd = accept(thread_arg->server_fd, &new_addr, &addr_len)) == -1)
     return LOG(NET_LOG_PATH, errno, strerror(errno));
 
   // add file descriptor to threads poll list
-  if (net_add_clifd(thread_arg->total_cli__fds, new_fd))
-    return MAX_FDS_IN_PROGRAM;
+  if (net_add_clifd(thread_arg, new_fd, new_addr, addr_len))
+    return __FAILURE__;
   return __SUCCESS__;
 }
 
 
-/// @brief handler for incoming client connections (called by the program's main thread)
-/// @param server_addr server address struct
-/// @param server_fd server file descriptor
-/// @param total_cli__fds all file descriptors available accross all threads
+/// @brief event loop for handling incoming connections to the server (executed by the main thread)
+/// @param thread_arg thread argument structure defined in include/threads.h
 errcode_t net_connection_handler(thread_arg_t *thread_arg)
 {
   pollfd_t __fds[1] = {[0].fd = thread_arg->server_fd, [0].events = POLLPRI, [0].revents = 0};
@@ -215,7 +258,7 @@ errcode_t net_connection_handler(thread_arg_t *thread_arg)
 /// @brief disconnect client bcs recv returned 0 (close fd and put last fd in i)
 /// @param __fds list of client file descriptors polled by this thread
 /// @param i index of client file decriptor
-static inline void cli_dc(pollfd_t *__fds, size_t i)
+static void cli_dc(MYSQL *db_connect, pollfd_t *__fds, size_t i)
 {
   size_t j = i;
   while (__fds[j+1].fd != -1)
@@ -223,6 +266,8 @@ static inline void cli_dc(pollfd_t *__fds, size_t i)
   close(__fds[i].fd);
   __fds[i].fd = __fds[j].fd;
   __fds[j].fd = -1;
+  if (db_co_up_auth_stat_by_fd(db_connect, CO_FLAG_DISCO, __fds[i].fd))
+    j = LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M);
 }
 
 
@@ -230,32 +275,32 @@ static inline void cli_dc(pollfd_t *__fds, size_t i)
 /// @param __fds list of file descriptors handled by the thread
 /// @param i index of the cli fd
 /// @param __err value of errno
-static errcode_t net_handle_recv_err(pollfd_t *__fds, size_t i, errcode_t __err)
+static errcode_t net_handle_recv_err(MYSQL *db_connect, pollfd_t *__fds, size_t i, errcode_t __err)
 {
   switch (__err){
     case EWOULDBLOCK || EAGAIN:
       return __SUCCESS__;
   
     case ECONNREFUSED:
-      cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __err, "ERROR in recv() A remote host refused to allow the network connection");
+      cli_dc(db_connect, __fds, i);
+      return LOG(NET_LOG_PATH, __err, ECONNREFUSED_M1);
     
     case EFAULT:
-      return LOG(NET_LOG_PATH, __err, "ERROR in recv() The receive buffer pointer point outside the process's address space.");
+      return LOG(NET_LOG_PATH, __err, EFAULT_M1);
     
     case ENOTCONN:
-      cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __err, "ERROR in recv() The socket is associated with a connection-oriented protocol and has not been connected");
+      cli_dc(db_connect, __fds, i);
+      return LOG(NET_LOG_PATH, __err, ENOTCONN_M1);
 
     case EINTR: 
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in recv() interrupt occured");
+      return LOG(NET_LOG_PATH, __SUCCESS__, EINTR_M1);
 
     case ENOTSOCK:
-      cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in recv() fd is not a socket");
+      cli_dc(db_connect, __fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, ENOTSOCK_M1);
     
     case EINVAL:
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in recv() invalid argument");
+      return LOG(NET_LOG_PATH, __SUCCESS__, EINVAL_M1);
 
     case ENOMEM: 
     #if (ATOMIC_SUPPORT)
@@ -266,7 +311,7 @@ static errcode_t net_handle_recv_err(pollfd_t *__fds, size_t i, errcode_t __err)
       pthread_mutex_unlock(&mutex_memory_w);  
     #endif
       sleep(MEM_WARN_INTV);
-      return LOG(NET_LOG_PATH, __err, "WARNING kernel out of memory");
+      return LOG(NET_LOG_PATH, __err, ENOMEM_M);
       break;
   }
   return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
@@ -277,50 +322,50 @@ static errcode_t net_handle_recv_err(pollfd_t *__fds, size_t i, errcode_t __err)
 /// @param __fds list of file descriptors handled by the thread
 /// @param i index of the cli fd
 /// @param __err value of errno
-static errcode_t net_handle_send_err(pollfd_t *__fds, size_t i, errcode_t __err)
+static errcode_t net_handle_send_err(MYSQL *db_connect, pollfd_t *__fds, size_t i, errcode_t __err)
 {
   switch (__err){
     case EWOULDBLOCK || EAGAIN:
       return __SUCCESS__;
   
     case ECONNREFUSED:
-      cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() A remote host refused to allow the network connection");
+      cli_dc(db_connect, __fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, ECONNREFUSED_M2);
     
     case EALREADY:
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() Another Fast Open is in progress..");
+      return LOG(NET_LOG_PATH, __SUCCESS__, EALREADY_M2);
     
     case EFAULT:
-      cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() An invalid user space address was specified for an argument.");
+      cli_dc(db_connect, __fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, EFAULT_M2);
     
     case EBADF:
-      cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() Invvalid file descriptor.");
+      cli_dc(db_connect, __fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, EBADF_M2);
 
     case ECONNRESET:
-      cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() Connection was reset by peer.");
+      cli_dc(db_connect, __fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, ECONNRESET_M2);
 
     case ENOBUFS:
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() The socket is associated with a connection-oriented protocol and has not been connected");
+      return LOG(NET_LOG_PATH, __SUCCESS__, ENOBUFS_M2);
 
     case ENOTCONN:
-      cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() The socket is associated with a connection-oriented protocol and has not been connected");
+      cli_dc(db_connect, __fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, ENOTCONN_M2);
 
     case EINTR: 
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() interrupt occured");
+      return LOG(NET_LOG_PATH, __SUCCESS__, EINTR_M2);
 
     case EMSGSIZE:
-      return LOG(NET_LOG_PATH, __SUCCESS__, "Warning in send() The buffer size is way too big");
+      return LOG(NET_LOG_PATH, __SUCCESS__, EMSGSIZE_M2);
 
     case ENOTSOCK:
-      cli_dc(__fds, i);
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() fd is not a socket");
+      cli_dc(db_connect, __fds, i);
+      return LOG(NET_LOG_PATH, __SUCCESS__, ENOTSOCK_M2);
     
     case EINVAL:
-      return LOG(NET_LOG_PATH, __SUCCESS__, "ERROR in send() invalid argument");
+      return LOG(NET_LOG_PATH, __SUCCESS__, EINVAL_M2);
 
     case ENOMEM: 
     #if (ATOMIC_SUPPORT)
@@ -331,20 +376,25 @@ static errcode_t net_handle_send_err(pollfd_t *__fds, size_t i, errcode_t __err)
       pthread_mutex_unlock(&mutex_memory_w);  
     #endif
       sleep(MEM_WARN_INTV);
-      return LOG(NET_LOG_PATH, __err, "WARNING kernel out of memory");
+      return LOG(NET_LOG_PATH, __err, ENOMEM_M);
       break;
   }
   return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
 }
 
 
-static inline errcode_t sendall(pollfd_t *__fds, size_t i, const void *buf, size_t n)
+/// @brief send all the data 
+/// @param __fds list of pollfds getting polled
+/// @param i index of client
+/// @param buf buffer to send
+/// @param n len of buffer
+static inline errcode_t sendall(MYSQL *db_connect, pollfd_t *__fds, size_t i, const void *buf, size_t n)
 {
   ssize_t rest = n, sent;
   int32_t attempts = 0;
   while (rest){
     if ((sent = send(__fds[i].fd, buf, n, MSG_DONTWAIT | MSG_OOB)) == -1){
-      if (net_handle_send_err(__fds, i, errno))
+      if (net_handle_send_err(db_connect, __fds, i, errno))
         pthread_exit(NULL);
       else
         return E_SEND_FAILED;
@@ -362,7 +412,7 @@ static inline errcode_t sendall(pollfd_t *__fds, size_t i, const void *buf, size
 /// @param i index of the cli fd
 /// @param buf buffer to contain the stream
 /// @return 1--->DATA_AVAILABLE  0--->DATA_UNAVAILABLE
-static inline errcode_t net_data_available(pollfd_t *__fds, size_t i, void *buf)
+static errcode_t net_data_available(MYSQL *db_connect, pollfd_t *__fds, size_t i, void *buf)
 {
   
   int32_t mss, __err;
@@ -373,21 +423,21 @@ static inline errcode_t net_data_available(pollfd_t *__fds, size_t i, void *buf)
   
   switch (recv(__fds[i].fd, buf, (size_t)mss, MSG_DONTWAIT | MSG_OOB))
   {
-    case -1:      // error
+    // error
+    case -1:
       free(buf);
       buf = NULL;
       __err = errno;
-      if (net_handle_recv_err(__fds, i, __err))  // critical error
-        pthread_exit(NULL);         // termlinate thread
+      if (net_handle_recv_err(db_connect, __fds, i, __err))// critical error
+        pthread_exit(NULL);// terminate thread
       return DATA_UNAVAILABLE;
-
-    case 0:         // client disconnects
+    // client disconnects
+    case 0:
       free(buf);
       buf = NULL;
-      cli_dc(__fds[i].fd, i);
+      cli_dc(db_connect, __fds[i].fd, i);
       return DATA_UNAVAILABLE;
-  
-    default:      // data available
+    default:// data available
       return DATA_AVAILABLE;
   }
 }
@@ -402,15 +452,19 @@ static inline void net_check_clifds(MYSQL *db_connect, pollfd_t *__fds)
   while (__fds[i].fd != -1 && ((__fds[i].revents & POLLIN) || (__fds[i].revents & POLLPRI))){
     if (buf)
       free(buf);
-    if (net_data_available(__fds, i, buf)){   // check if client's RCVBUFF is available
-      if (__fds[i].revents & POLLIN)
-        // call for request module to parse and handle data reception
-        if (req_request_handle(buf, db_connect, __fds, i))
-          return __FAILURE__;
-      else if (__fds[i].revents & POLLPRI)
+    if (net_data_available(db_connect, __fds, i, buf)){   // check if client's RCVBUFF is available
+      if (__fds[i].revents & POLLPRI)
+      {
         // call for request module to handle authentication
         if (req_pri_request_handle(buf, db_connect, __fds, i))
           return __FAILURE__;
+      }
+      else if (__fds[i].revents & POLLIN)
+      {
+        // call for request module to parse and handle data reception
+        if (req_request_handle(buf, db_connect, __fds, i))
+          return __FAILURE__;
+      }
     }
     ++i;
   }
@@ -418,7 +472,7 @@ static inline void net_check_clifds(MYSQL *db_connect, pollfd_t *__fds)
 
 
 /// @brief handler for incoming client data (called by the additionally created threads)
-/// @param args hint to the struct defined in /include/base.h
+/// @param args hint to the struct defined in header for threads
 /// @return errcode NULL for now
 void *net_communication_handler(void *args)
 {
@@ -426,18 +480,21 @@ void *net_communication_handler(void *args)
   pollfd_t *__fds = thread_arg->total_cli__fds[thread_arg->thread_id];
   #if (!ATOMIC_SUPPORT)
     pthread_mutex_unlock(&mutex_thread_id);
+    if (thread_arg->thread_id == SERVER_THREAD_NO)
+      pthread_mutex_destroy(&mutex_thread_id);
   #endif
   int32_t n_events;
   for (;;)
   {
-    while ((n_events = poll(__fds, CLIENTS_PER_THREAD, COMM_POLL_TIMEOUT)) == 0) // do testings on the timeout value
+    while (!(n_events = poll(__fds, CLIENTS_PER_THREAD, COMM_POLL_TIMEOUT))) // do testings on the timeout value
       continue;
-    switch (n_events){
-    case -1:          // error occured
+    switch (n_events)
+    {
+    case -1: // error occured
       if (net_handle_poll_err(errno))
         pthread_exit(NULL);
       continue;
-    default:          // incoming data
+    default:  // incoming data
       net_check_clifds(thread_arg->db_connect, __fds);
     }
   }
@@ -463,83 +520,7 @@ void *net_communication_handler(void *args)
 /// @attention You should check which functions set key memory space to 0 after usage !!
 
 
-
-
-/// @brief ping client and recv the same msg
-/// @param __fds list of file decriptors polled by the thread
-/// @param i index of client to ping
-/// @param buf buffer for sending
-/// @param len length of buffer
-/// @return 0 if the buff send was received else error
-static inline errcode_t net_ping_cli(pollfd_t *__fds, size_t i, const char *buf, size_t len)
+errcode_t send_pk()
 {
-  char recvbuf[len];
-  if (sendall(__fds, i, buf, len))
-    return __FAILURE__;
-  if (net_data_available(__fds, i, (void*)recvbuf))
-    return __FAILURE__;
-  return __SUCCESS__;
+
 }
-
-
-
-/// @brief send public key to client that didnt authenticate yet
-/// @param req request format: [code<4bytes>][size<4bytes>][id_user]
-/// @param db_connect MYSQSL db connection
-/// @param __fds client file descriptors
-/// @param i index of client fd to authenticate
-errcode_t net_auth_send_pubkey(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i)
-{
-  uint8_t pk[crypto_box_PUBLICKEYBYTES];
-  // get public key from database
-  if (db_get_pk(db_connect, pk))
-  {
-    bzero(pk, crypto_box_PUBLICKEYBYTES);
-    return __FAILURE__;
-  } 
-  // send public key to client
-  if (sendall(__fds, i, pk, crypto_box_PUBLICKEYBYTES))
-  {
-    bzero(pk, crypto_box_PUBLICKEYBYTES);
-    return LOG(SECU_LOG_PATH, E_SEND_PKEY, "Error sending primary key to client");
-  }
-  return __SUCCESS__;
-}
-
-
-/// @brief recv (symmetric)key and ping client
-/// @param req request format: [code<4bytes>][data]
-/// @param db_connect MYSQSL db connection
-/// @param __fds client file descriptors
-/// @param i index of client fd to authenticate
-errcode_t net_auth_recv_k(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i)
-{
-  uint8_t pk[crypto_box_PUBLICKEYBYTES], sk[crypto_box_SECRETKEYBYTES];
-  uint8_t enc_key[ENCRYPTED_KEY_SIZE], dec_key[crypto_secretbox_KEYBYTES];
-
-  // offset of 4 for reqcode
-  memcpy((void*)enc_key, &req[4], ENCRYPTED_KEY_SIZE);
-
-  // fetch pk and sk from db
-  if (db_get_pk_sk(db_connect, pk, sk))
-    return __FAILURE__;
-
-  // decrypt the key
-  if (secu_asymmetric_decrypt(pk, sk, dec_key, enc_key, ENCRYPTED_KEY_SIZE))
-    return __FAILURE__;
-
-  bzero(pk, crypto_box_PUBLICKEYBYTES);
-  bzero(sk, crypto_box_SECRETKEYBYTES);
-  bzero(enc_key, crypto_box_PUBLICKEYBYTES);
-
-  // hello ping newly connected client
-  if (net_ping_cli(__fds, i, PING_HELLO, SIZE_PING_HELLO))
-    return __FAILURE__;
-  
-  // save keys
-  
-
-  return __SUCCESS__;
-}
-
-

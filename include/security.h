@@ -4,22 +4,6 @@
 #include "base.h"
 
 
-//  security errors 100->150 
-#define ESODIUM_INIT    100
-#define ESECU_LOG       101
-#define EKEYPAIR_GEN    102
-#define EKEYPAIR_SAVE   103
-#define EKEYPAIR_DEL    104
-#define E_WRONG_CREDS   105
-#define E_AUTHKEY       106
-#define E_SHA512        107
-#define E_ASYMM_ENCRYPT 108
-#define E_ASYMM_DECRYPT 109
-#define E_SYMM_ENCRYPT  110
-#define E_SYMM_DECRYPT  111
-#define E_SEND_PKEY     112
-#define ESIZE_REQ_DATA  113
-
 //===============================================
 //          ----SIZEOF AUTH STREAMS----
 //===============================================

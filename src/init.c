@@ -67,3 +67,28 @@ inline void run_threads(pthread_t *threads, thread_arg_t *thread_arg)
   }
 }
 
+
+/// @brief cleanups in case of killing/terminating the process
+/// (no security keys to destroy since all will be generated again each time the process in ran)
+/// @param db_connect database connection
+/// @param threads list of threads 
+/// @param __err errorcode
+inline errcode_t total_cleanup(MYSQL *db_connect, pthread_t *threads, errcode_t __err)
+{
+  for (size_t i = 0; i < SERVER_THREAD_NO; i++)
+    free(threads+i);
+  
+  mysql_close(db_connect);
+
+  pthread_mutex_destroy(&mutex_connection_global);
+  pthread_mutex_destroy(&mutex_connection_fd);
+  pthread_mutex_destroy(&mutex_connection_auth_status);
+
+  #if (!ATOMIC_SUPPORT)
+    pthread_mutex_destroy(mutex_thread_id);
+    pthread_mutex_destroy(mutex_memory_w);
+  #endif
+  
+  return __err;
+}
+

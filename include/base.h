@@ -1,5 +1,6 @@
 #ifndef BASE_H
 #define BASE_H      1
+#include "errors.h"
 #include <poll.h>
 #include <stdio.h>
 #include <errno.h>
@@ -22,26 +23,14 @@ typedef struct pollfd pollfd_t;
 typedef struct sockaddr sockaddr_t;
 typedef struct hostent  hostent_t;
 
+#define DEV_MODE      1
+#define TEST_MODE     0
+#define PROD_MODE     0
+
+
 #define __SUCCESS__   00
 #define __FAILURE__   01
-#define ELOG          02
-#define E_FOPEN       03
-#define E_FREAD       04
-#define E_FWRITE      05
-#define E_AUTH        06
-#define E_PASS_LEN    07
-#define E_INVAL_PASS  010
-#define E_INIT        011
-#define E_GETPASS     012
-#define EINVALID_CHAR 013
-#define EMALLOC_FAIL  014
-/// @brief Danger return values (cleanup and exit)
-#define D_NET_EXIT    014
-#define D_SECU_EXIT   015
-#define D_DB_EXIT     016
-#define D_CORE_EXIT   017
-#define MAX_MEM_WARN  4
-#define MEM_WARN_INTV 1
+
 
 #define MAX_AUTH_SIZE 128
 
@@ -52,59 +41,6 @@ typedef struct hostent  hostent_t;
 #define NET_LOG_PATH  (const char *)"logs/network.log"
 #define REQ_LOG_PATH  (const char *)"logs/request.log"
 
-
-#define DEV_MODE      1
-#define TEST_MODE     0
-#define PROD_MODE     0
-
-#if (DEV_MODE)
-
-  #define SERVER_THREAD_NO    1
-  #define SERVER_BACKLOG      16    // number of clients allowed
-
-#elif (DEV_MODE || PROD_MODE)
-  #define SERVER_THREAD_NO    2 // change this base on system limit and testings
-  #define SERVER_BACKLOG      1024    // number of clients allowed
-
-#endif
-
-#if (SERVER_THREAD_NO > 32)
-  #error "Max number of threads reached"
-#endif
-
-
-
-
-#if defined(__STDC_NO_ATOMICS__) || (__STDC_VERSION__ < 201112L) /// we use ATOMIC
-
-#define ATOMIC_SUPPORT        0
-/// @brief struct that will be used by threads as argument to handle requests etc...
-typedef struct ThreadArgs
-{
-  sockaddr_t  server_addr;    // no race condition issues with these 2 we will only perform read on them
-  sockfd_t    server_fd;      // no race condition issues with these 2 we will only perform read on them
-  pollfd_t    total_cli__fds[SERVER_THREAD_NO][SERVER_BACKLOG]; // THIS WILL REQUIRE GOOD HANDLING BY US  
-  MYSQL      *db_connect;     // all threads will access the db concurrently but it is the db that handles concurrency
-  uint32_t    thread_id;  // number of thread set by each iteration in run_thread()
-}thread_arg_t;
-
-
-pthread_mutex_t mutex_thread_id; // mutex will only be used once by everythread to check id
-pthread_mutex_t mutex_memory_w;  // mutex will me used for memory warnings
-#else /// we use mutex
-
-#define ATOMIC_SUPPORT         1
-/// @brief struct that will be used by threads as argument to handle requests etc...
-typedef struct ThreadArgs
-{
-  sockaddr_t  server_addr;    // no race condition issues with these 2 we will only perform read on them
-  sockfd_t    server_fd;      // no race condition issues with these 2 we will only perform read on them
-  co_t        **co_head;
-  pollfd_t    total_cli__fds[SERVER_THREAD_NO][SERVER_BACKLOG]; // THIS WILL REQUIRE GOOD HANDLING BY US  
-  MYSQL      *db_connect;     // all threads will access the db concurrently but it is the db that handles concurrency
-  _Atomic uint32_t    thread_id;  // thread identifier
-}thread_arg_t;
-#endif
 
 extern errcode_t  log_write(const char *log_path, errcode_t __err, const char *__msg);
 extern errcode_t  get_pass(char *pass);

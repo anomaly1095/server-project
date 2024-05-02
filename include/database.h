@@ -4,26 +4,8 @@
 #define DATABASE_H      1
 #include "security.h"
 
-// DB ERRORS: 200->300
-// many errnos are defined in MYSQL API
-#define EDB_LOG         200
-#define EDB_CO_INIT     201 
-    
-#define EDB_GET_PKEY    205
-#define EDB_FOPEN       206
-#define EDB_FREAD       207
-#define EDB_AUTH        208
-#define EDB_W_HOST      209
-#define EDB_W_USER      210
-#define EDB_W_PASSWD    211
-#define EDB_W_DB        212
-#define EDB_W_PORT      213
-#define EDB_CONNECT     214
-#define WDB_NO_ROWS     215
-#define DB_SIZE_HOST    256
-#define DB_SIZE_USER    33
-#define DB_SIZE_PASS    33
-#define DB_SIZE_DB      65
+
+
 #define SIZE_MYSQL_DT   sizeof(MYSQL_TIME) // mysql datetime
 #define SIZE_IP_ADDR    16 // mysql datetime
 
@@ -113,7 +95,8 @@ inline errcode_t secu_key_del(MYSQL *db_connect);
 //     co_last_co DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00',
 //     co_af SMALLINT UNSIGNED NOT NULL DEFAULT 0,
 //     co_port SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-//     co_ip_addr BINARY(16) NOT NULL DEFAULT 0
+//     co_ip_addr BINARY(16) NOT NULL DEFAULT 0,
+//     co_key BINARY(32) NOT_NULL DEFAULT 0
 // );
 
 ///@brief CONNECTION STRUCT
@@ -125,8 +108,10 @@ typedef struct Connection
   MYSQL_TIME co_last_co;
   sa_family_t co_af;  // address family
   in_port_t co_port;  // port
-  uint8_t co_ip_addr[SIZE_IP_ADDR]; // fits ipv4 or ipv6
-}co_t;
+  uint8_t co_ip_addr[SIZE_IP_ADDR]; // fits ipv4 or ipv6 BIG ENDIAN
+  uint8_t co_key[crypto_secretbox_KEYBYTES]; // symmetric key
+}__attribute((packed));
+typedef struct Connection co_t;
 
 //----VALUES OF THE co_auth_status FLAG---
 /// @brief the client has connected but not done any authentication steps
@@ -155,8 +140,8 @@ typedef struct Connection
 
 ///@brief query to add new connection to database 
 #define QUERY_CO_INSERT     "INSERT INTO Connection \
-(co_fd, co_auth_status, co_last_co, co_af, co_port, co_ip_addr) \
-VALUES (?, ?, NOW(), ?, ?, ?);"
+(co_fd, co_auth_status, co_last_co, co_af, co_port, co_ip_addr, co_key) \
+VALUES (?, ?, NOW(), ?, ?, ?, ?);"
 #define QUERY_CO_INSERT_LEN \
 (__builtin_strlen(QUERY_CO_INSERT))
 
@@ -204,6 +189,12 @@ co_last_co <= NOW() - INTERVAL " STR(CLEANUP_HOURS) " HOUR;"
 #define QUERY_CO_SEL_ALL_BY_IP_LEN \
 (__builtin_strlen(QUERY_CO_SEL_ALL_BY_IP))
 
+///@brief query to get all data with ip address
+#define QUERY_CO_SEL_KEY_BY_ADDR "SELECT co_key FROM Connection WHERE co_ip_addr = ? AND co_port = ?;"
+#define QUERY_CO_SEL_KEY_BY_ADDR_LEN \
+(__builtin_strlen(QUERY_CO_SEL_KEY_BY_ADDR))
+
+
 //---------------------------ALTER
 
 #define QUERY_CO_RES_ID "ALTER TABLE Connection AUTO_INCREMENT = 1"
@@ -227,6 +218,11 @@ SET co_fd = ? WHERE co_ip_addr = ? and co_port = ?;"
 SET co_auth_status = %u WHERE co_id = %llu;"
 #define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID_LEN \
 (__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID))
+
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD "UPDATE Connection \
+SET co_auth_status = %u WHERE co_fd = %d;"
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD_LEN \
+(__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD))
 
 #define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ADDR "UPDATE Connection \
 SET co_auth_status = ? WHERE co_ip_addr = ? AND co_port = ?;"
@@ -263,7 +259,7 @@ errcode_t db_co_cleanup(MYSQL *db_connect);
 /// @param db_connect MYSQL database connection
 /// @param co non allocated connection object
 /// @param co_id id of the connection
-errcode_t db_co_get_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id);
+errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id);
 
 
 /// @attention Memory will be allocated internally for co objects and nrow set internally
@@ -273,7 +269,7 @@ errcode_t db_co_get_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id);
 /// @param co non allocated connection object
 /// @param nrow number of rows returned by the query 
 /// @param co_fd file descriptor number we are looking for
-errcode_t db_co_get_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const sockfd_t co_fd);
+errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const sockfd_t co_fd);
 
 
 /// @attention Memory will be allocated internally
@@ -282,7 +278,7 @@ errcode_t db_co_get_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const 
 /// @param co non allocated connection object
 /// @param nrow number of rows returned by the query 
 /// @param co_auth_status 
-errcode_t db_co_get_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow, const flag_t co_auth_status);
+errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow, const flag_t co_auth_status);
 
 
 /// @attention Memory will be allocated internally for co objects and nrow set internally
@@ -291,8 +287,17 @@ errcode_t db_co_get_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
 /// @param co non allocated connection object
 /// @param nrow number of rows returned by the query 
 /// @param co_ip_addr ip address big endian byte order
-errcode_t db_co_get_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr);
+errcode_t db_co_sel_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr);
 
+
+
+/// @attention Memory will be allocated internally for co objects and nrow set internally
+/// @brief get symmetric key for client that has that address pair (ip, port)
+/// @param db_connect MYSQL database connection
+/// @param key symmetric key
+/// @param co_ip_addr connection ip address big endian byte order
+/// @param co_port  connection port big endian byte order
+errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, uint8_t *key, const uint8_t *co_ip_addr, const in_port_t co_port);
 
 /// @brief function to reset the Connection table 
 /// @param db_connect MYSQL database connection
@@ -349,6 +354,12 @@ errcode_t db_co_up_fd_by_sockaddr(MYSQL *db_connect, sockfd_t co_fd, const uint8
 /// @param co_auth_status new connection status
 /// @param co_id connection id
 errcode_t db_co_up_auth_stat_by_id(MYSQL *db_connect, flag_t co_auth_status, id64_t co_id);
+
+/// @brief update connection row to <co_auth_status> status that has fd = <co_fd>
+/// @param db_connect MYSQL database connection
+/// @param co_auth_status new connection status
+/// @param co_id file descriptor
+errcode_t db_co_up_auth_stat_by_fd(MYSQL *db_connect, flag_t co_auth_status, sockfd_t co_fd);
 
 /// @brief update connection row to <co_auth_status> status that have idaddr = <co_ip_addr> and portnum = <co_port>
 /// @param db_connect MYSQL database connection
