@@ -948,11 +948,26 @@ cleanup:
 /// @brief update connection file descriptor to <co_fd> has id <co_id>
 /// @param db_connect MYSQL database connection
 /// @param co_fd connection file descriptor
-/// @param co_id connection id
+/// @param co_fd connection id
 errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_id)
 {
   char query[QUERY_CO_UP_FD_BY_ID_LEN + 24 + 16];
   sprintf(query, QUERY_CO_UP_FD_BY_ID, co_fd, co_id);
+  // Execute the query
+  if (mysql_real_query(db_connect, query, strlen(query)))
+    return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+
+  return __SUCCESS__;
+}
+
+/// @brief update connection file descriptor to <co_fd_new> has fd <co_fd>
+/// @param db_connect MYSQL database connection
+/// @param co_fd_new new connection file descriptor
+/// @param co_fd connection file descriptor
+errcode_t db_co_up_fd_by_fd(MYSQL *db_connect, const sockfd_t co_fd_new, sockfd_t co_fd);
+{
+  char query[QUERY_CO_UP_FD_BY_FD_LEN + 16 + 16];
+  sprintf(query, QUERY_CO_UP_FD_BY_FD, co_fd_new, co_fd);
   // Execute the query
   if (mysql_real_query(db_connect, query, strlen(query)))
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));

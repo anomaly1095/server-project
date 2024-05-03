@@ -15,7 +15,7 @@
 |                 - handling all the requests and helper functions                          |
 |                                                                                           |
 | GENERAL FORMAT:                                                                           |
-|             [req code 4 bytes][sizeseg1 4 bytes][seg1][sizedeg2 4 bytes][seg2]...         |
+|             [req code 4 bytes][seglen1 4 bytes][seg1][seglen2 4 bytes][seg2]...         |
 |  |
 |  |
 |  |
@@ -57,5 +57,11 @@ errcode_t req_request_handle(const void *req, thread_arg_t *thread_arg, size_t t
  * @return __SUCCESS__ if the priority data is handled successfully, EREQ_FAIL if an error occurs.
  */
 errcode_t req_pri_request_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
+
+
+void net_send_pk(thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
+
+void net_recv_key(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+
 
 #endif

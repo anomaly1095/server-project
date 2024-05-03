@@ -16,7 +16,6 @@
 #include <mysql/mysql.h>
 
 
-typedef int32_t errcode_t;
 typedef uint8_t flag_t;
 typedef int32_t sockfd_t;
 typedef struct pollfd pollfd_t;
@@ -28,11 +27,10 @@ typedef struct hostent  hostent_t;
 #define PROD_MODE     0
 
 
-#define __SUCCESS__   00
-#define __FAILURE__   01
 
 
-#define MAX_AUTH_SIZE 128
+
+#define MAX_AUTH_SIZE 128U
 
 #define DATETIME_FORM (const char *)"%Y-%m-%d %H:%M:%S"
 #define LOG_FORMAT    (const char *)"|  [%s]  |  [%d]  |  [%s]  |"

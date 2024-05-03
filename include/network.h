@@ -22,7 +22,7 @@
 #if (DEV_MODE && !TEST_MODE && !PROD_MODE) // developement mode
 
   #define SERVER_DOMAIN       "127.0.0.1"
-  #define SERVER_PORT         6969  // host byte order
+  #define SERVER_PORT         6969U  // host byte order
   #define SERVER_SOCK_TYPE    SOCK_STREAM | SOCK_NONBLOCK
   #define SERVER_SOCK_PROTO   IPPROTO_TCP
 
@@ -31,7 +31,7 @@
 #elif (!DEV_MODE && TEST_MODE && !PROD_MODE) // testing mode
   
   #define SERVER_DOMAIN       "192.168.1.78"
-  #define SERVER_PORT         6969    // host byte order
+  #define SERVER_PORT         6969U    // host byte order
   #define SERVER_SOCK_TYPE    SOCK_STREAM | SOCK_NONBLOCK
   #define SERVER_SOCK_PROTO   IPPROTO_TCP
 
@@ -40,7 +40,7 @@
 #elif (!DEV_MODE && !TEST_MODE && PROD_MODE) // production mode
 
   #define SERVER_DOMAIN       "41.228.24.124" // change to domain name
-  #define SERVER_PORT         6969  // host byte order
+  #define SERVER_PORT         6969U  // host byte order
   #define SERVER_SOCK_TYPE    SOCK_STREAM | SOCK_NONBLOCK
   #define SERVER_SOCK_PROTO   IPPROTO_TCP
 

@@ -2,9 +2,14 @@
 
 #ifndef __ERRORS_H
   #define __ERRORS_H      1
-
+  
 //=========================================================================
+
+typedef int32_t errcode_t;
+#define __SUCCESS__   00
+
 // general purpose errors 1-->99
+#define __FAILURE__   01
 #define ELOG          02
 #define E_FOPEN       03
 #define E_FREAD       04
@@ -22,7 +27,7 @@
 #define D_DB_EXIT     016
 #define D_CORE_EXIT   017
 // warnings
-#define MAX_MEM_WARN  4
+#define MAX_MEM_WARN  4 // maximum warning from the kernel before we do an emergency exit
 #define MEM_WARN_INTV 1
 
 #define E_GETPASS_M     "Error getting password)"
@@ -101,12 +106,15 @@
 #define EMALLOC_FAIL_M4 "Error: memory allocation failed for co in db_co_get_all_by_ip()"
 #define EMALLOC_FAIL_M5 "Error: memory allocation failed for co in db_co_get_all_by_id()"
 
+//=========================================================================
+
 // request errors: 300-->400
 #define EUNDEF_REQ_CODE     400
 #define EREQ_FAIL           401
+#define EREQ_LEN            402
 
-#define EUNDEF_REQ_CODE_M "Undefined request code"
-
+#define EUNDEF_REQ_CODE_M   "Undefined request code"
+#define EREQ_LEN_M          403
 
 //=========================================================================
 // network errors 400->500
@@ -121,6 +129,8 @@
 #define E_SEND_FAILED       407
 #define E_MISSING_DATA      408
 #define E_UNSUPPORTED_AF    409
+#define E_ALTER_CO_FLAG     410
+#define E_PHASE2_AUTH       411
 
 #define ENOMEM_M           "WARNING kernel out of memory"
 #define EGET_HOSTBYNAME_M   "Error during server DNS lookup"
@@ -148,6 +158,10 @@ protocol and has not been connected"
 #define EMSGSIZE_M2         "WARNING in send() The buffer size is way too big"
 #define ENOTSOCK_M2         "ERROR in send() fd is not a socket"
 #define EINVAL_M2           "ERROR in send() invalid argument"
+#define E_ALTER_CO_FLAG_M   "ERROR when altering client authentication status in database"
+#define E_PHASE2_AUTH_M     "ERROR could be CRITICAL in net_recv_key()"
+
 
 //=========================================================================
+
 #endif

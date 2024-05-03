@@ -1,8 +1,5 @@
 #include "../include/network.h"
 
-static errcode_t net_ping_cli(pollfd_t *__fds, size_t i, const char *buf, size_t len);
-
-
 //==========================================================================
 //                        SERVER SETUP
 //==========================================================================
@@ -32,10 +29,15 @@ static inline errcode_t net_get_ipaddr_byhost(sockaddr_t *server_addr) {
   }
 }
 #endif
-
-/// @brief Determines the IP address either by converting the domain name to IP address or directly using the IP address.
-/// @param server_addr Pointer to the server's sockaddr structure where the IP address will be stored
-/// @return Error code indicating success or failure
+/**
+ * @brief Determines the IP address either by converting the domain name to IP address or directly using the IP address.
+ * 
+ * This function gets the ip address to bind for the server
+ * It handles ipv4 ipv6 and domain name 
+ * 
+ * @param server_addr Pointer to the server's sockaddr structure where the IP address will be stored
+ * @return Error code indicating success or failure
+ */
 static inline errcode_t net_get_ipaddr(sockaddr_t *server_addr)
 {
   // Check if SERVER_DOMAIN is an IP address or a domain name and handle accordingly
@@ -52,10 +54,15 @@ static inline errcode_t net_get_ipaddr(sockaddr_t *server_addr)
 }
 
 
-
-/// @brief Fills up the server's sockaddr structure 
-/// @param server_addr Pointer to the server's sockaddr structure to be initialized
-/// @return Error code indicating success or failure
+/**
+ * @brief Fills up the server's sockaddr structure 
+ *
+ * This function initiate the sockaddr struct with port number and ip address (BIG ENDIAN)
+ * and the address family
+ *
+ * @param server_addr Pointer to the server's sockaddr structure to be initialized
+ * @return Error code indicating success or failure
+ */
 static inline errcode_t net_server_init(sockaddr_t *server_addr)
 {
   // Initialize the memory block to zeros
@@ -71,9 +78,15 @@ static inline errcode_t net_server_init(sockaddr_t *server_addr)
   return __SUCCESS__;
 }
 
-/// @brief Sets up the needed options for the server socket
-/// @param server_fd File descriptor of the server socket
-/// @return Error code indicating success or failure
+
+/**
+ * @brief Sets up the needed options for the server socket
+ * 
+ * This function sets up server socket options as defined in network.h
+ * 
+ * @param server_fd File descriptor of the server socket
+ * @return Error code indicating success or failure
+ */
 static inline errcode_t net_set_server_opts(sockfd_t server_fd)
 {
   // Set up various socket options needed for the server socket
@@ -88,11 +101,15 @@ static inline errcode_t net_set_server_opts(sockfd_t server_fd)
   return __SUCCESS__;
 }
 
-
-/// @brief Setting up the server (socket / bind / options / listen)
-/// @param server_addr Pointer to the server's address structure
-/// @param server_fd Pointer to the server's socket file descriptor
-/// @return Error code indicating success or failure
+/**
+ * @brief Setting up the server (socket / bind / options / listen)
+ * 
+ * This function sets up the server
+ * 
+ * @param server_addr Pointer to the server's address structure
+ * @param server_fd Pointer to the server's socket file descriptor
+ * @return Error code indicating success or failure
+ */
 errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd)
 {
   // Initialize the server address
@@ -384,15 +401,22 @@ static void cli_dc(thread_arg_t *thread_arg, size_t thread_index, size_t client_
   // Close the client file descriptor
   close(thread_arg->total_cli_fds[thread_index][client_index].fd);
   
-  // Update the connection authentication status and remove the client file descriptor
+  // Update the connection authentication status
   pthread_mutex_lock(&mutex_connection_auth_status);
   if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_DISCO, thread_arg->total_cli_fds[thread_index][client_index].fd))
     LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M);
   pthread_mutex_unlock(&mutex_connection_auth_status);
 
+  // Update the connection file descriptor to -1
+  pthread_mutex_lock(&mutex_connection_fd);
+  if (db_co_up_fd_by_fd(thread_arg->db_connect, FD_DISCO, thread_arg->total_cli_fds[thread_index][client_index].fd))
+    LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M);
+  pthread_mutex_unlock(&mutex_connection_fd);
+
   // Move the last active client file descriptor to the position of the disconnected client
   thread_arg->total_cli_fds[thread_index][client_index].fd = thread_arg->total_cli_fds[thread_index][last_index].fd;
   thread_arg->total_cli_fds[thread_index][last_index].fd = -1;
+
 }
 
 
@@ -737,11 +761,11 @@ void *net_communication_handler(void *args)
  */
 
 
-
 /**
- * @brief Sends the public key to the client.
+ * @brief Sends the public key to the client. (First step of authentication)
  * 
  * This function retrieves the public key from the database and sends it to the client identified by the thread and client indices.
+ * and updates the client co_auth_status from the database
  * 
  * @param thread_arg Pointer to the thread_arg_t structure.
  * @param thread_index Index of the thread.
@@ -758,11 +782,82 @@ errcode_t net_send_pk(thread_arg_t *thread_arg, size_t thread_index, size_t clie
   
   // Send the public key to the client
   if (sendall(thread_arg, thread_index, client_index, pk, crypto_box_PUBLICKEYBYTES))
-    return LOG(SECU_LOG_PATH, E_SEND_PK, E_SEND_PK_M);
+    return LOG(NET_LOG_PATH, E_SEND_PK, E_SEND_PK_M);
   
   // Clear the public key from memory after sending
   bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
-  
+
+  if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_RECVD_PK, thread_arg->total_cli_fds[thread_index][client_index].fd))
+    return LOG(NET_LOG_PATH, E_ALTER_CO_FLAG, E_ALTER_CO_FLAG_M);
   return __SUCCESS__;
 }
 
+
+/**
+ * @brief Receive the symmetric key generated by the client.
+ * 
+ * This function:
+ *  1- retrieves the symmetric key from the client socket, 
+ *  2- Decrypts it with the (pk, sk) key pair retreived from the database, 
+ * 
+ * 
+ * @param req Binary stream of data coming from the network.
+ * @param thread_arg Pointer to the thread_arg_t structure.
+ * @param thread_index Index of the thread.
+ * @param client_index Index of the client.
+ */
+errcode_t net_recv_key(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+{
+  uint32_t len_data1;
+  uint8_t enc_key[ENCRYPTED_KEY_SIZE];
+  uint8_t dec_key[crypto_secretbox_KEYBYTES];
+  uint8_t pk[crypto_box_PUBLICKEYBYTES];
+  uint8_t sk[crypto_box_SECRETKEYBYTES];
+  bzero((void*)enc_key, ENCRYPTED_KEY_SIZE);
+  bzero((void*)dec_key, crypto_secretbox_KEYBYTES);
+  bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
+  bzero((void*)sk, crypto_box_SECRETKEYBYTES);
+
+  // copy the length of the data offset by 4 bytes that are used for the reqcode
+  if (!memcpy((void*)&len_data1, req + 4, 4))
+    return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
+  
+  // check that the length of the data segment corresponds to the expecred size
+  if (len_data1 != ENCRYPTED_KEY_SIZE)
+    goto __failure;
+  
+  // move the encrypted data offset by 8 bytes that are used for the reqcode and seglen
+  if (!memmove((void*)enc_key, req + 8, ENCRYPTED_KEY_SIZE))
+  goto __failure;
+
+  // fetch asymmetric server keys from db
+  if (db_get_pk_sk(thread_arg->db_connect, pk, sk))
+    goto __failure;
+  
+  // decrypt the key
+  if (secu_asymmetric_decrypt(pk, sk, enc_key, dec_key, ENCRYPTED_KEY_SIZE))
+    goto __failure;
+
+  // update connection authentication  status flag
+  if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_SENT_KEY, thread_arg->total_cli_fds[thread_index][client_index].fd))
+    goto __failure;
+
+  // update the key in the database
+  if (db_co_up_key_by_fd(thread_arg->db_connect, (const)dec_key, thread_arg->total_cli_fds[thread_index][client_index].fd))
+    goto __failure;
+
+__success:
+  /// reset all security memory to 0x0
+  bzero((void*)enc_key, ENCRYPTED_KEY_SIZE);
+  bzero((void*)dec_key, crypto_secretbox_KEYBYTES);
+  bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
+  bzero((void*)sk, crypto_box_SECRETKEYBYTES);
+  return __SUCCESS__;
+__failure:
+  /// reset all security memory to 0x0
+  bzero((void*)enc_key, ENCRYPTED_KEY_SIZE);
+  bzero((void*)dec_key, crypto_secretbox_KEYBYTES);
+  bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
+  bzero((void*)sk, crypto_box_SECRETKEYBYTES);
+  return LOG(NET_LOG_PATH, E_PHASE2_AUTH, E_PHASE2_AUTH_M);
+}

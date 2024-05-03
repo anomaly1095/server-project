@@ -83,9 +83,11 @@ static inline errcode_t req_pri_run_request(const void *req, uint32_t reqcode, t
   {
     case REQ_SEND_ASYMKEY: 
       net_send_pk(thread_arg, thread_index, client_index);
+      free(req);
       break;
     case REQ_RECV_K:
-      // Add parsing function for REQ_RECV_K
+      net_recv_key(req, thread_arg, thread_index, client_index);
+      free(req);
       break;
     case REQ_VALID_SYMKEY:
       // Add parsing function for REQ_VALID_SYMKEY

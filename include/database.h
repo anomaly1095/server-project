@@ -137,7 +137,7 @@ typedef struct Connection co_t;
 
 #define DISCO_HOURS         1
 #define CLEANUP_HOURS       24
-
+#define FD_DISCO            -1
 //---------------------------INSERT
 
 ///@brief query to add new connection to database 
@@ -290,6 +290,19 @@ SET co_fd = %d WHERE co_id = %llu;"
 /// @param co_fd connection file descriptor
 /// @param co_id connection id
 errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_id);
+
+//--------------------
+
+#define QUERY_CO_UP_FD_BY_FD "UPDATE Connection \
+SET co_fd = %d WHERE co_fd = %d;"
+#define QUERY_CO_UP_FD_BY_FD_LEN \
+(__builtin_strlen(QUERY_CO_UP_FD_BY_ID))
+
+/// @brief update connection file descriptor to <co_fd_new> has fd <co_fd>
+/// @param db_connect MYSQL database connection
+/// @param co_fd connection file descriptor
+/// @param co_fd_new new connection file descriptor
+errcode_t db_co_up_fd_by_fd(MYSQL *db_connect, const sockfd_t co_fd_new, sockfd_t co_fd);
 
 //--------------------
 

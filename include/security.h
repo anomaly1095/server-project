@@ -14,12 +14,6 @@
 #define ENCRYPTED_KEY_SIZE crypto_secretbox_KEYBYTES +\
 crypto_secretbox_MACBYTES
 
-#define ENCRYPTED_SALT_SIZE SECRET_SALT_SIZE +\
-crypto_secretbox_MACBYTES
-
-#define SIZE_K_SALT ENCRYPTED_KEY_SIZE +\
-ENCRYPTED_SALT_SIZE
-
 
 #define PATH_PHYSKEY    "/media/amnesia2/PKEY/keys/auth_init.bin"  // path to the key for first step authentication
 
