@@ -344,6 +344,12 @@ static inline void fill_params_co_insert(MYSQL_BIND *params, co_t co_new)
   params[4].buffer_type = MYSQL_TYPE_BLOB;
   params[4].buffer = co_new.co_ip_addr;
   params[4].buffer_length = SIZE_IP_ADDR;
+
+  // Connection secret key
+  params[5].buffer_type = MYSQL_TYPE_BLOB;
+  params[5].buffer = co_new.co_key;
+  params[5].buffer_length = crypto_secretbox_KEYBYTES;
+
 }
 
 /// @brief function to insert new connection in database
@@ -352,7 +358,7 @@ static inline void fill_params_co_insert(MYSQL_BIND *params, co_t co_new)
 errcode_t db_co_insert(MYSQL *db_connect, const co_t co_new)
 {
   MYSQL_STMT *stmt;
-  MYSQL_BIND params[5];
+  MYSQL_BIND params[CO_NROWS-2]; // no id binding and no date binding
   bzero((void*)params, sizeof params);
   //initialize the statement
   if (!(stmt = mysql_stmt_init(db_connect)))
@@ -360,14 +366,14 @@ errcode_t db_co_insert(MYSQL *db_connect, const co_t co_new)
 
   // prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_INSERT, QUERY_CO_INSERT_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Fill the parameter values for pk and sk
   fill_params_co_insert(params, co_new);
 
   // Bind the parameters to the statement
   if (mysql_stmt_bind_param(stmt, params))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Execute the statement
   if (!mysql_stmt_execute(stmt))
@@ -417,14 +423,14 @@ errcode_t db_co_del_byaddr(MYSQL *db_connect, uint8_t *co_ip_addr, const int16_t
 
   // prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_DEL_BYADDR, QUERY_CO_DEL_BYADDR_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Fill the parameter values for pk and sk
   fill_params_co_del_byaddr(params, co_ip_addr, co_port);
 
   // Bind the parameters to the statement
   if (mysql_stmt_bind_param(stmt, params))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Execute the statement
   if (!mysql_stmt_execute(stmt))
@@ -487,7 +493,7 @@ errcode_t db_co_res(MYSQL *db_connect)
 
 /// @brief binding thge result columns of the select function queries
 /// @param result result to bind (7 columns)
-static inline void db_co_result_bind(MYSQL_BIND result[7])
+static inline void db_co_result_bind(MYSQL_BIND *result)
 {
     // Column 1: co_id (BIGINT)
     result[0].buffer_type = MYSQL_TYPE_LONGLONG;
@@ -530,6 +536,12 @@ static inline void db_co_result_bind(MYSQL_BIND result[7])
     result[6].buffer = malloc(SIZE_IP_ADDR);
     result[6].buffer_length = SIZE_IP_ADDR;
     result[6].is_null = 0;
+
+    // Column 8: co_key (BINARY)
+    result[7].buffer_type = MYSQL_TYPE_BLOB;
+    result[7].buffer = malloc(crypto_secretbox_KEYBYTES);
+    result[7].buffer_length = crypto_secretbox_KEYBYTES;
+    result[7].is_null = 0;
 }
 
 /// @brief FUNCTION TO copy the dataa fetched in the result sql object to the connection object
@@ -544,6 +556,7 @@ static inline void db_co_res_cpy(co_t *co, MYSQL_BIND *result)
   co->co_af = *((uint16_t *)result[4].buffer);
   co->co_port = *((uint16_t *)result[5].buffer);
   memcpy(co->co_ip_addr, result[6].buffer, SIZE_IP_ADDR);
+  memcpy(co->co_key, result[7].buffer, crypto_secretbox_KEYBYTES);
 }
 
 
@@ -556,7 +569,7 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND param;
-  MYSQL_BIND result[7]; // Number of columns in the result set
+  MYSQL_BIND result[CO_NROWS]; // Number of columns in the result set
   size_t i;
 
   if (!(stmt = mysql_stmt_init(db_connect)))
@@ -564,7 +577,7 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
 
   // Prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_ID, QUERY_CO_SEL_ALL_BY_ID_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   bzero((void*)&param, sizeof(param));
   param.buffer_type = MYSQL_TYPE_LONGLONG;
@@ -574,37 +587,48 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
 
   // Bind the parameter to the statement
   if (mysql_stmt_bind_param(stmt, &param))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Execute the statement
   if (mysql_stmt_execute(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Bind result set columns to variables
   db_co_result_bind(result);
 
   if (mysql_stmt_bind_result(stmt, result))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Store the result set
   if (mysql_stmt_store_result(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Allocate memory for the result set
-  if (!(*co = (co_t*)malloc(sizeof(co_t))))
+  if (!(*co = (co_t*)malloc(sizeof(co_t)))){
+    mysql_stmt_close(stmt);
+    mysql_stmt_free_result(stmt);
     return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M1);
+  }
 
-  // Fetch row
-  db_co_res_cpy(*co, result);
+  // Fetch rows
+  i = 0;
+  while (!mysql_stmt_fetch(stmt)){
+    db_co_res_cpy(co[i], result);
+    bzero((void*)result[CO_NROWS-1].buffer, crypto_secretbox_KEYBYTES));
+    ++i;
+  }
 
-cleanup:
-  // Free resources
-  for (i = 0; i < 7; ++i)
+  for (i = 0; i < CO_NROWS; ++i)
     free(result[i].buffer);
-
-  mysql_stmt_free_result(stmt);
   mysql_stmt_close(stmt);
+  mysql_stmt_free_result(stmt);
   return __SUCCESS__;
+cleanup:
+  for (i = 0; i < CO_NROWS; ++i)
+    free(result[i].buffer);
+  mysql_stmt_close(stmt);
+  mysql_stmt_free_result(stmt);
+  return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
@@ -619,7 +643,7 @@ errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const 
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND param;
-  MYSQL_BIND result[7]; // Number of columns in the result set
+  MYSQL_BIND result[CO_NROWS]; // Number of columns in the result set
   size_t i;
 
   if (!(stmt = mysql_stmt_init(db_connect)))
@@ -627,7 +651,7 @@ errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const 
 
   // Prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_FD, QUERY_CO_SEL_ALL_BY_FD_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   bzero((void*)&param, sizeof(param));
   param.buffer_type = MYSQL_TYPE_LONG;
@@ -637,29 +661,34 @@ errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const 
 
   // Bind the parameter to the statement
   if (mysql_stmt_bind_param(stmt, &param))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Execute the statement
   if (mysql_stmt_execute(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Bind result set columns to variables
   db_co_result_bind(result);
 
   if (mysql_stmt_bind_result(stmt, result))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Store the result set
   if (mysql_stmt_store_result(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Get the number of rows
-  if (!(*nrow = mysql_stmt_num_rows(stmt)))
+  if (!(*nrow = mysql_stmt_num_rows(stmt))){
+    mysql_stmt_close(stmt);
+    mysql_stmt_free_result(stmt);
     return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M1);
-
+  }
   // Allocate memory for the result set
-  if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t))))
+  if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t)))){
+    mysql_stmt_close(stmt);
+    mysql_stmt_free_result(stmt);
     return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M2);
+  }
 
   // Fetch rows
   i = 0;
@@ -668,14 +697,18 @@ errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const 
     ++i;
   }
 
-cleanup:
-  // Free resources
-  for (i = 0; i < 7; ++i)
+  for (i = 0; i < CO_NROWS; ++i)
     free(result[i].buffer);
-
-  mysql_stmt_free_result(stmt);
+  // Cleanup
   mysql_stmt_close(stmt);
+  mysql_stmt_free_result(stmt);
   return __SUCCESS__;
+cleanup:
+  for (i = 0; i < CO_NROWS; ++i)
+    free(result[i].buffer);
+  mysql_stmt_close(stmt);
+  mysql_stmt_free_result(stmt);
+  return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
@@ -689,7 +722,7 @@ errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND param;
-  MYSQL_BIND result[7]; // Number of columns in the result set
+  MYSQL_BIND result[CO_NROWS]; // Number of columns in the result set
   size_t i;
 
   if (!(stmt = mysql_stmt_init(db_connect)))
@@ -697,7 +730,7 @@ errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
 
   // Prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_AUTH_STAT, QUERY_CO_SEL_ALL_BY_AUTH_STAT_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   bzero((void*)&param, sizeof(param));
   param.buffer_type = MYSQL_TYPE_BLOB;
@@ -706,29 +739,34 @@ errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
 
   // Bind the parameters to the statement
   if (mysql_stmt_bind_param(stmt, &param))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Execute the statement
   if (mysql_stmt_execute(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Bind result set columns to variables
   db_co_result_bind(result);
   
   if (mysql_stmt_bind_result(stmt, result))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Store the result set
   if (mysql_stmt_store_result(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Get the number of rows
-  if (!(*nrow = mysql_stmt_num_rows(stmt)))
-    return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M2);
-
+  if (!(*nrow = mysql_stmt_num_rows(stmt))){
+    mysql_stmt_close(stmt);
+    mysql_stmt_free_result(stmt);
+    return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M1);
+  }
   // Allocate memory for the result set
-  if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t))))
-    return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M3);
+  if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t)))){
+    mysql_stmt_close(stmt);
+    mysql_stmt_free_result(stmt);
+    return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M2);
+  }
 
   // Fetch rows
   i = 0;
@@ -737,105 +775,23 @@ errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
     ++i;
   }
 
-cleanup:
-  // Free resources
-  for (i = 0; i < 7; ++i)
+  for (i = 0; i < CO_NROWS; ++i)
     free(result[i].buffer);
-
-  mysql_stmt_free_result(stmt);
+  // Cleanup
   mysql_stmt_close(stmt);
+  mysql_stmt_free_result(stmt);
   return __SUCCESS__;
+cleanup:
+  for (i = 0; i < CO_NROWS; ++i)
+    free(result[i].buffer);
+  mysql_stmt_close(stmt);
+  mysql_stmt_free_result(stmt);
+  return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
-/// @attention Memory will be allocated internally for co objects and nrow set internally
-/// @brief get all columns by ip address
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param nrow number of rows returned by the query 
-/// @param co_ip_addr ip address big endian byte order
-errcode_t db_co_sel_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr)
+static inline void fill_params_co_sel_by_addr(MYSQL_BIND *params, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
-  MYSQL_STMT *stmt;
-  MYSQL_BIND param;
-  MYSQL_BIND result[7]; // Number of columns in the result set
-  size_t i;
-
-  if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
-
-  // Prepare the statement
-  if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_IP, QUERY_CO_SEL_ALL_BY_IP_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-
-  bzero((void*)&param, sizeof(param));
-  param.buffer_type = MYSQL_TYPE_BLOB;
-  param.buffer = (void*)co_ip_addr;
-  param.buffer_length = SIZE_IP_ADDR;
-
-  // Bind the parameters to the statement
-  if (mysql_stmt_bind_param(stmt, &param))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-
-  // Execute the statement
-  if (mysql_stmt_execute(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-
-  // Bind result set columns to variables
-  db_co_result_bind(result);
-  
-  if (mysql_stmt_bind_result(stmt, result))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-
-  // Store the result set
-  if (mysql_stmt_store_result(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-
-  // Get the number of rows
-  if (!(*nrow = mysql_stmt_num_rows(stmt)))
-    return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M3);
-
-  // Allocate memory for the result set
-  if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t))))
-    return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M4);
-
-  // Fetch rows
-  i = 0;
-  while (!mysql_stmt_fetch(stmt)){
-    db_co_res_cpy(co[i], result);
-    ++i;
-  }
-
-cleanup:
-  // Free resources
-  for (i = 0; i < 7; ++i)
-    free(result[i].buffer);
-
-  mysql_stmt_free_result(stmt);
-  mysql_stmt_close(stmt);
-  return __SUCCESS__;
-}
-
-/// @attention Memory will be allocated internally for co objects and nrow set internally
-/// @brief get symmetric key for client that has that address pair (ip, port)
-/// @param db_connect MYSQL database connection
-/// @param key symmetric key
-/// @param co_ip_addr connection ip address big endian byte order
-/// @param co_port  connection port big endian byte order
-errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, uint8_t *key, const uint8_t *co_ip_addr, const in_port_t co_port)
-{
-  MYSQL_STMT *stmt;
-  MYSQL_BIND params[2]; // Number of columns in the result set
-  MYSQL_BIND result;
-  int32_t nrow;
-
-  if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
-
-  // Prepare the statement
-  if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_KEY_BY_ADDR, QUERY_CO_SEL_KEY_BY_ADDR_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-
   bzero((void*)params, sizeof(params));
   params[0].buffer_type = MYSQL_TYPE_BLOB;
   params[0].buffer = (void*)co_ip_addr;
@@ -844,40 +800,146 @@ errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, uint8_t *key, const uint8_t *
   params[1].buffer_type = MYSQL_TYPE_SHORT;
   params[1].buffer = (void*)&co_port;
   params[1].buffer_length = sizeof co_port;
+}
 
+/// @attention Memory will be allocated internally for co objects and nrow set internally
+/// @brief get all columns by ip address
+/// @param db_connect MYSQL database connection
+/// @param co non allocated connection object
+/// @param nrow number of rows returned by the query 
+/// @param co_ip_addr ip address big endian byte order
+/// @param co_port connection port number big endian byte order
+errcode_t db_co_sel_all_by_addr(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr, const in_port_t co_port)
+{
+  MYSQL_STMT *stmt;
+  MYSQL_BIND params[2];
+  MYSQL_BIND result[]; // Number of columns in the result set
+  size_t i;
+
+  if (!(stmt = mysql_stmt_init(db_connect)))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
+
+  // Prepare the statement
+  if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_ADDR, QUERY_CO_SEL_ALL_BY_ADDR_LEN))
+    goto cleanup;
+
+  fill_params_co_sel_by_addr(params, co_ip_addr, co_port);
+  
   // Bind the parameters to the statement
   if (mysql_stmt_bind_param(stmt, params))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Execute the statement
   if (mysql_stmt_execute(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Bind result set columns to variables
-  result.buffer_type = MYSQL_TYPE_BLOB;
-  result.buffer = key;
-  result.buffer_length = crypto_secretbox_KEYBYTES;
-
-  if (mysql_stmt_bind_result(stmt, &result))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+  db_co_result_bind(result);
+  
+  if (mysql_stmt_bind_result(stmt, result))
+    goto cleanup;
 
   // Store the result set
   if (mysql_stmt_store_result(stmt))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Get the number of rows
-  if (!(nrow = mysql_stmt_num_rows(stmt)))
+  if (!(*nrow = mysql_stmt_num_rows(stmt))){
+    mysql_stmt_close(stmt);
+    mysql_stmt_free_result(stmt);
+    return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M1);
+  }
+  // Allocate memory for the result set
+  if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t)))){
+    mysql_stmt_close(stmt);
+    mysql_stmt_free_result(stmt);
+    return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M2);
+  }
+
+  // Fetch rows
+  i = 0;
+  while (!mysql_stmt_fetch(stmt)){
+    db_co_res_cpy(co[i], result);
+    ++i;
+  }
+
+  for (i = 0; i < 7; ++i)
+    free(result[i].buffer);
+  // Cleanup
+  mysql_stmt_close(stmt);
+  mysql_stmt_free_result(stmt);
+  return __SUCCESS__;
+cleanup:
+  for (i = 0; i < 7; ++i)
+    free(result[i].buffer);
+  mysql_stmt_close(stmt);
+  mysql_stmt_free_result(stmt);
+  return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+}
+
+/// @attention Memory will be allocated internally for co objects and nrow set internally
+/// @brief get symmetric key for client that has that address pair (ip, port)
+/// @param db_connect MYSQL database connection
+/// @param key symmetric key
+/// @param co_ip_addr connection ip address big endian byte order
+/// @param co_port  connection port big endian byte order
+errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const uint8_t *co_ip_addr, const in_port_t co_port)
+{
+  MYSQL_STMT *stmt;
+  MYSQL_BIND params[2]; // Number of columns in the result set
+  MYSQL_BIND result;
+
+  if (!(stmt = mysql_stmt_init(db_connect)))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
+
+  // Prepare the statement
+  if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_KEY_BY_ADDR, QUERY_CO_SEL_KEY_BY_ADDR_LEN))
+    goto cleanup;
+
+  fill_params_co_sel_by_addr(params, co_ip_addr, co_port);
+
+  // Bind the parameters to the statement
+  if (mysql_stmt_bind_param(stmt, params))
+    goto cleanup;
+
+  // Execute the statement
+  if (mysql_stmt_execute(stmt))
+    goto cleanup;
+
+  // Bind result set columns to variables
+  result.buffer_type = MYSQL_TYPE_BLOB;
+  result.buffer = co_key;
+  result.buffer_length = crypto_secretbox_KEYBYTES;
+
+  if (mysql_stmt_bind_result(stmt, &result))
+    goto cleanup;
+
+  // Store the result set
+  if (mysql_stmt_store_result(stmt))
+    goto cleanup;
+
+  // Get the number of rows
+  if (!mysql_stmt_num_rows(stmt)){
+    bzero((void*)params, sizeof params);
+    mysql_stmt_close(stmt);
+    mysql_stmt_free_result(stmt);
     return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M4);
+  }
 
   // Fetch rows
   if (!mysql_stmt_fetch(stmt))
-    memcpy((void*)key, (const void*)result.buffer, crypto_secretbox_KEYBYTES);
+    memcpy((void*)co_key, (const void*)result.buffer, crypto_secretbox_KEYBYTES);
 
   // Cleanup
-  mysql_stmt_free_result(stmt);
+  bzero((void*)params, sizeof params);
   mysql_stmt_close(stmt);
-
+  mysql_stmt_free_result(stmt);
   return __SUCCESS__;
+cleanup:
+  bzero((void*)params, sizeof params);
+  mysql_stmt_close(stmt);
+  mysql_stmt_free_result(stmt);
+  return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
@@ -887,7 +949,7 @@ errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, uint8_t *key, const uint8_t *
 /// @param db_connect MYSQL database connection
 /// @param co_fd connection file descriptor
 /// @param co_id connection id
-inline errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_id)
+errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_id)
 {
   char query[QUERY_CO_UP_FD_BY_ID_LEN + 24 + 16];
   sprintf(query, QUERY_CO_UP_FD_BY_ID, co_fd, co_id);
@@ -904,7 +966,7 @@ inline errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_
 /// @param co_fd socket file descriptor
 /// @param co_ip_addr connection ip address BIG ENDIAN BYTE ORDER
 /// @param co_port conenction port number BIG ENDIAN BYTE ORDER
-static inline void fill_params_co_update_fd_by_sockaddr(MYSQL_BIND *params, sockfd_t co_fd, const uint8_t *co_ip_addr, const in_port_t co_port)
+static inline void fill_params_co_update_fd_by_addr(MYSQL_BIND *params, sockfd_t co_fd, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   // param1: socket file descriptor
   params[0].buffer_type = MYSQL_TYPE_LONG;
@@ -927,7 +989,7 @@ static inline void fill_params_co_update_fd_by_sockaddr(MYSQL_BIND *params, sock
 /// @param co_fd socket file descriptor
 /// @param co_ip_addr connection ip address BIG ENDIAN
 /// @param co_port connection port BIG ENDIAN
-errcode_t db_co_up_fd_by_sockaddr(MYSQL *db_connect, sockfd_t co_fd, const uint8_t *co_ip_addr, const in_port_t co_port)
+errcode_t db_co_up_fd_by_addr(MYSQL *db_connect, sockfd_t co_fd, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND params[3];
@@ -938,14 +1000,14 @@ errcode_t db_co_up_fd_by_sockaddr(MYSQL *db_connect, sockfd_t co_fd, const uint8
 
   // prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_UP_FD_BYADDR, QUERY_CO_UP_FD_BYADDR_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Fill the parameter values for the query
-  fill_params_co_update_fd_by_sockaddr(params, co_fd, co_ip_addr, co_port);
+  fill_params_co_update_fd_by_addr(params, co_fd, co_ip_addr, co_port);
 
   // Bind the parameters to the statement
   if (mysql_stmt_bind_param(stmt, params))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Execute the statement
   if (!mysql_stmt_execute(stmt))
@@ -965,7 +1027,7 @@ cleanup:
 /// @param db_connect MYSQL database connection
 /// @param co_auth_status new connection status
 /// @param co_id connection id
-inline errcode_t db_co_up_auth_stat_by_id(MYSQL *db_connect, flag_t co_auth_status, id64_t co_id)
+errcode_t db_co_up_auth_stat_by_id(MYSQL *db_connect, flag_t co_auth_status, id64_t co_id)
 {
   char query[QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID_LEN + 24 + 8];
   sprintf(query, QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID, co_auth_status, co_id);
@@ -975,6 +1037,7 @@ inline errcode_t db_co_up_auth_stat_by_id(MYSQL *db_connect, flag_t co_auth_stat
   
   return __SUCCESS__;
 }
+
 
 /// @brief update connection row to <co_auth_status> status that has fd = <co_fd>
 /// @param db_connect MYSQL database connection
@@ -1018,7 +1081,7 @@ static inline void fill_params_co_up_auth_stat_by_sockaddr(MYSQL_BIND *params, f
 /// @param co_auth_status new connection status
 /// @param co_ip_addr connection ip address BIG ENDIAN
 /// @param co_port connection port BIG ENDIAN
-errcode_t db_co_up_auth_stat_by_sockaddr(MYSQL *db_connect, flag_t co_auth_status, const uint8_t *co_ip_addr, const in_port_t co_port)
+errcode_t db_co_up_auth_stat_by_addr(MYSQL *db_connect, flag_t co_auth_status, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   MYSQL_STMT *stmt; // statement handle
   MYSQL_BIND params[3];
@@ -1030,14 +1093,14 @@ errcode_t db_co_up_auth_stat_by_sockaddr(MYSQL *db_connect, flag_t co_auth_statu
 
   // Prepare the statement with the INSERT query
   if (mysql_stmt_prepare(stmt, QUERY_CO_UP_AUTH_AUTH_STAT_BY_ADDR, QUERY_CO_UP_AUTH_AUTH_STAT_BY_ADDR_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Fill the parameter values for pk and sk
   fill_params_co_up_auth_stat_by_sockaddr(params, co_auth_status, co_ip_addr, co_port);
 
   // Bind the parameters to the statement
   if (mysql_stmt_bind_param(stmt, params))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    goto cleanup;
 
   // Execute the statement
   if (!mysql_stmt_execute(stmt))
@@ -1067,5 +1130,171 @@ errcode_t db_co_up_auth_stat_by_last_co(MYSQL *db_connect)
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
 
   return __SUCCESS__;
+}
+
+
+/// @brief bind the parameters for the database query
+/// @param params parameters
+/// @param co_key symmetric key sent by the client
+/// @param co_id id of the instance in the db
+static inline void fill_params_co_up_key_by_id(MYSQL_BIND *params, const uint8_t *co_key, id64_t co_id)
+{
+  // param1: new connection key
+  params[1].buffer_type = MYSQL_TYPE_BLOB;
+  params[1].buffer = (void*)co_key;
+  params[1].buffer_length = crypto_secretbox_KEYBYTES;
+
+  // param2: connection id 
+  params[0].buffer_type = MYSQL_TYPE_LONGLONG;
+  params[0].buffer = (void*)&co_id;
+  params[0].buffer_length = sizeof co_id;
+
+}
+
+/// @brief 
+/// @param db_connect 
+/// @param co_key 
+/// @param co_id 
+/// @return 
+errcode_t db_co_up_key_by_id(MYSQL *db_connect, const uint8_t *co_key, id64_t co_id)
+{
+  MYSQL_STMT *stmt;
+  MYSQL_BIND params[2];
+
+  if (!(stmt = mysql_stmt_init(db_connect)))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+
+  if (mysql_stmt_prepare(stmt, QUERY_CO_UP_KEY_BY_ID, QUERY_CO_UP_KEY_BY_ID_LEN))
+    goto cleanup;
+
+  bzero((void*)params, sizeof params);
+  fill_params_co_up_key_by_id(params, co_key, co_id);
+
+  if (mysql_stmt_bind_param(stmt, params))
+    goto cleanup;
+  
+  if (mysql_stmt_execute(stmt))
+    goto cleanup;
+    
+  bzero((void*)params, sizeof params);
+  mysql_stmt_close(stmt);
+  return __SUCCESS__;
+
+cleanup:
+  bzero((void*)params, sizeof params);
+  mysql_stmt_close(stmt);
+  return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+}
+
+
+/// @brief bind the parameters for the database query
+/// @param params parameters
+/// @param co_fd socket file descriptor
+/// @param co_ip_addr connection ip address BIG ENDIAN BYTE ORDER
+/// @param co_port conenction port number BIG ENDIAN BYTE ORDER
+static inline void fill_params_co_up_key_by_fd(MYSQL_BIND *params, const uint8_t *co_key, sockfd_t co_fd)
+{
+  // param1: new connection key
+  params[1].buffer_type = MYSQL_TYPE_BLOB;
+  params[1].buffer = (void*)co_key;
+  params[1].buffer_length = crypto_secretbox_KEYBYTES;
+
+  // param2: connection id 
+  params[0].buffer_type = MYSQL_TYPE_LONG;
+  params[0].buffer = (void*)&co_fd;
+  params[0].buffer_length = sizeof co_fd;
+}
+
+/// @brief 
+/// @param db_connect 
+/// @param co_key 
+/// @param co_fd 
+/// @return 
+errcode_t db_co_up_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t co_fd)
+{
+  MYSQL_STMT *stmt;
+  MYSQL_BIND params[2];
+
+  if (!(stmt = mysql_stmt_init(db_connect)))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+
+  if (mysql_stmt_prepare(stmt, QUERY_CO_UP_KEY_BY_FD, QUERY_CO_UP_KEY_BY_FD_LEN))
+    goto cleanup;
+
+  bzero((void*)params, sizeof params);
+  fill_params_co_up_key_by_fd(params, co_key, co_fd);
+
+  if (mysql_stmt_bind_param(stmt, params))
+    goto cleanup;
+
+  if (mysql_stmt_execute(stmt))
+    goto cleanup;
+
+  bzero((void*)params, sizeof params);
+  mysql_stmt_close(stmt);
+  return __SUCCESS__;
+cleanup:
+  bzero((void*)params, sizeof params);
+  mysql_stmt_close(stmt);
+  return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+}
+
+
+/// @brief bind the parameters for the database query
+/// @param params parameters
+/// @param co_fd socket file descriptor
+/// @param co_ip_addr connection ip address BIG ENDIAN BYTE ORDER
+/// @param co_port conenction port number BIG ENDIAN BYTE ORDER
+static inline void fill_params_co_up_key_by_addr(MYSQL_BIND *params, const uint8_t *co_key, const uint8_t *co_ip_addr, const in_port_t co_port)
+{
+  // param1: new connection key
+  params[0].buffer_type = MYSQL_TYPE_BLOB;
+  params[0].buffer = (void*)co_key;
+  params[0].buffer_length = crypto_secretbox_KEYBYTES;
+
+  // param2: connection ip address BIG ENDIAN BYTE ORDER
+  params[1].buffer_type = MYSQL_TYPE_BLOB;
+  params[1].buffer = (void*)co_ip_addr;
+  params[1].buffer_length = SIZE_IP_ADDR;
+
+  // param3: connection port BIG ENDIAN BYTE ORDER
+  params[2].buffer_type = MYSQL_TYPE_SHORT;
+  params[2].buffer = (void*)&co_port;
+  params[2].buffer_length = sizeof co_port;
+}
+
+/// @brief 
+/// @param db_connect 
+/// @param co_key 
+/// @param co_ip_addr 
+/// @param co_port 
+/// @return 
+errcode_t db_co_up_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const uint8_t *co_ip_addr, const in_port_t co_port)
+{
+  MYSQL_STMT *stmt;
+  MYSQL_BIND params[3];
+
+  if (!(stmt = mysql_stmt_init(db_connect)))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+
+  if (mysql_stmt_prepare(stmt, QUERY_CO_UP_KEY_BY_ADDR, QUERY_CO_UP_KEY_BY_ADDR_LEN))
+    goto cleanup;
+
+  bzero((void*)params, sizeof params);
+  fill_params_co_up_key_by_addr(params, co_key, co_ip_addr, co_port);
+
+  if (mysql_stmt_bind_param(stmt, params))
+    goto cleanup;
+
+  if (mysql_stmt_execute(stmt))
+    goto cleanup;
+
+  bzero((void*)params, sizeof params);
+  mysql_stmt_close(stmt);
+  return __SUCCESS__;
+cleanup:
+  bzero((void*)params, sizeof params);
+  mysql_stmt_close(stmt);
+  return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 

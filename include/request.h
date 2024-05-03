@@ -32,10 +32,30 @@
 #define REQ_MODIF_SYMKEY    3  // client requests to repete key exchange
 
 
+/**
+ * @brief Handles the incoming stream of data from the socket.
+ * 
+ * This function processes the incoming stream of data received from the network module's recv() function.
+ * 
+ * @param req Stream of data coming from the network module recv().
+ * @param thread_arg Pointer to the thread_arg_t structure.
+ * @param thread_index Index of the thread.
+ * @param client_index Index of the client.
+ * @return __SUCCESS__ if the request is handled successfully, EREQ_FAIL if an error occurs.
+ */
+errcode_t req_request_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
 
-
-errcode_t req_request_handle(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i);
-
-errcode_t req_pri_request_handle(const void *req, MYSQL *db_connect, pollfd_t *__fds, size_t i);
+/**
+ * @brief Handles priority data for client authentication.
+ * 
+ * This function processes priority data received from the network module's recv().
+ * 
+ * @param req Stream of data coming from the network module recv().
+ * @param thread_arg Pointer to the thread_arg_t structure.
+ * @param thread_index Index of the thread.
+ * @param client_index Index of the client.
+ * @return __SUCCESS__ if the priority data is handled successfully, EREQ_FAIL if an error occurs.
+ */
+errcode_t req_pri_request_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
 
 #endif

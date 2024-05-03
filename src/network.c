@@ -9,14 +9,15 @@ static errcode_t net_ping_cli(pollfd_t *__fds, size_t i, const char *buf, size_t
 
 
 #if (USING_HN)
-/// @brief this functions gets called
-/// @param server_addr 
-/// @return 
+/// @brief Retrieves the IP address associated with the specified host name.
+/// @param server_addr Pointer to the server's sockaddr structure where the IP address will be stored
+/// @return Error code indicating success or failure
 static inline errcode_t net_get_ipaddr_byhost(sockaddr_t *server_addr) {
+  // Retrieve host information using the specified domain name
   struct hostent *hptr;
   if (!(hptr = gethostbyname(SERVER_DOMAIN)))
     return LOG(NET_LOG_PATH, h_errno, EGET_HOSTBYNAME_M);
-  // get the first address binded to that ip address
+  // Determine the address family and convert the IP address to binary form
   switch (hptr->h_length)
   {
   case 4:
@@ -32,15 +33,18 @@ static inline errcode_t net_get_ipaddr_byhost(sockaddr_t *server_addr) {
 }
 #endif
 
-/// @brief if SERVER_DOMAIN is an ip address we convert to network byte order binary
-///        if SERVER_DOMAIN is a domain name we do DNS lookup
+/// @brief Determines the IP address either by converting the domain name to IP address or directly using the IP address.
+/// @param server_addr Pointer to the server's sockaddr structure where the IP address will be stored
+/// @return Error code indicating success or failure
 static inline errcode_t net_get_ipaddr(sockaddr_t *server_addr)
 {
-  // ip address entered
+  // Check if SERVER_DOMAIN is an IP address or a domain name and handle accordingly
   #if (USING_IP)
+    // Convert the IP address string to binary form
     if (inet_pton(SERVER_AF, SERVER_DOMAIN, (void*)&server_addr->sa_data[2]) != 1)
       return LOG(NET_LOG_PATH, errno, strerror(errno));
   #else
+    // Perform DNS lookup to retrieve the IP address associated with the domain name
     if (net_get_ipaddr_byhost(server_addr))
       return ERR_IP_HANDLER;
   #endif
@@ -48,64 +52,88 @@ static inline errcode_t net_get_ipaddr(sockaddr_t *server_addr)
 }
 
 
-/// @brief filling up server's sockaddr struct 
+
+/// @brief Fills up the server's sockaddr structure 
+/// @param server_addr Pointer to the server's sockaddr structure to be initialized
+/// @return Error code indicating success or failure
 static inline errcode_t net_server_init(sockaddr_t *server_addr)
 {
-  memset((void*)server_addr, 0x0, sizeof server_addr);
+  // Initialize the memory block to zeros
+  memset((void*)server_addr, 0x0, sizeof(*server_addr));
+  // Set the address family to the specified value
   server_addr->sa_family = SERVER_AF;
+  // Set the port in network byte order, taking into account endianness
   server_addr->sa_data[0] = (__BYTE_ORDER == __BIG_ENDIAN) ? (SERVER_PORT >> 8) : (SERVER_PORT & 0xFF);
   server_addr->sa_data[1] = (__BYTE_ORDER == __BIG_ENDIAN) ? (SERVER_PORT & 0xFF) : (SERVER_PORT >> 8);
+  // Retrieve the IP address for the server
   if (net_get_ipaddr(server_addr))
     return ERR_IP_HANDLER;
   return __SUCCESS__;
 }
 
-
-/// @brief setting up needed options for server socket
+/// @brief Sets up the needed options for the server socket
+/// @param server_fd File descriptor of the server socket
+/// @return Error code indicating success or failure
 static inline errcode_t net_set_server_opts(sockfd_t server_fd)
 {
+  // Set up various socket options needed for the server socket
   if (SET__KEEPALIVE(server_fd) == -1 || 
       SET__REUSEADDR(server_fd) == -1 || 
       SET__IDLETIME(server_fd)  == -1 || 
       SET__INTRLTIME(server_fd) == -1 || 
       SET__KEEPCNTR(server_fd)  == -1)
+      // If any of the options setting fails, log the error
       return LOG(NET_LOG_PATH, errno, strerror(errno));
-    return __SUCCESS__;
+  // Return success if all options were successfully set
+  return __SUCCESS__;
 }
 
 
-/// @brief setting up the server (socket / bind / options / listen)
-/// @param server_addr server's address
-/// @param server_fd server's socket file descriptor
+/// @brief Setting up the server (socket / bind / options / listen)
+/// @param server_addr Pointer to the server's address structure
+/// @param server_fd Pointer to the server's socket file descriptor
+/// @return Error code indicating success or failure
 errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd)
 {
+  // Initialize the server address
   if (net_server_init(server_addr))
     return E_SERVER_SETUP;
+
+  // Create a socket
   if ((*server_fd = socket(SERVER_AF, SERVER_SOCK_TYPE, SERVER_SOCK_PROTO)) == -1)
     return LOG(NET_LOG_PATH, errno, strerror(errno));
-  
-  if (bind(*server_fd, server_addr, sizeof server_addr) == -1)
+
+  // Bind the socket to the server address
+  if (bind(*server_fd, (const sockaddr_t *)server_addr, sizeof(*server_addr)) == -1)
     return LOG(NET_LOG_PATH, errno, strerror(errno));
-  
+
+  // Set server socket options
   if (net_set_server_opts(*server_fd))
     return ENET_OPT_FAIL;
 
+  // Listen for incoming connections
   if (listen(*server_fd, SERVER_BACKLOG) == -1)
     return LOG(NET_LOG_PATH, errno, strerror(errno));
 
   return __SUCCESS__;
 }
 
+
 //==========================================================================
 //                  EVENT HANDLING & POLLING NEW CONNECTIONS
 //==========================================================================
 
-/// @brief 
-/// @param co_new 
-/// @param new_cli_fd 
-/// @param new_addr 
-/// @param addr_len 
-/// @return 
+/**
+ * @brief Creates a new connection instance.
+ * 
+ * This function creates a new connection instance using the provided parameters.
+ * 
+ * @param co_new Pointer to the new connection instance to be created.
+ * @param new_cli_fd New client file descriptor.
+ * @param new_addr Address of the new client.
+ * @param addr_len Length of the address.
+ * @return __SUCCESS__ if the connection instance is created successfully, or an error code if an error occurs.
+ */
 static errcode_t net_co_create(co_t *co_new, sockfd_t new_cli_fd, sockaddr_t new_addr, socklen_t addr_len)
 {
   // Check if the size of the address structure matches the expected size for IPv4 or IPv6
@@ -123,131 +151,211 @@ static errcode_t net_co_create(co_t *co_new, sockfd_t new_cli_fd, sockaddr_t new
     memcpy(co_new->co_ip_addr, &((struct sockaddr_in*)&new_addr)->sin_addr, sizeof(struct in_addr));
   else if (new_addr.sa_family == AF_INET6)
     memcpy(co_new->co_ip_addr, &((struct sockaddr_in6*)&new_addr)->sin6_addr, sizeof(struct in6_addr));
+  
+  // Clear the key
   bzero((void*)co_new->co_key, crypto_secretbox_KEYBYTES);
+  
   return __SUCCESS__;
 }
 
 
-/// @brief poll error handler 
-/// @param __err value of errno passed as argument
-/// @return __SUCCESS__--> resume process D_NET_EXIT--> cleanup and exit
+
+/**
+ * @brief Handles poll errors.
+ * 
+ * This function handles errors that may occur during polling.
+ * 
+ * @param __err Value of errno passed as an argument.
+ * @return __SUCCESS__ if the process can be resumed, D_NET_EXIT if cleanup and exit are required.
+ */
 static inline errcode_t net_handle_poll_err(int __err)
 {
-  LOG(NET_LOG_PATH, __err, strerror(__err));
-  switch (__err){
-    case EFAULT: 
+  LOG(NET_LOG_PATH, __err, strerror(__err)); // Log the error
+  
+  switch (__err) {
+    case EFAULT:
+    case EINVAL:
+      // Exit if there's a fatal error related to the arguments
       return D_NET_EXIT;
-    case EINTR: 
+      
+    case EINTR:
+      // Ignore interrupt signals
       break;
-    case EINVAL: 
-      return D_NET_EXIT;
-    case ENOMEM: 
+      
+    case ENOMEM:
+      // Handle out-of-memory condition by sleeping and increasing memory warning count
       memory_w++;
       sleep(MEM_WARN_INTV);
       break;
-    default: return __SUCCESS__;
+      
+    default:
+      // For other errors, resume the process
+      return __SUCCESS__;
   }
+  
+  // Check if memory warning count has reached the maximum
   return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
 }
 
 
-/// @brief initialize pollfd structures for incoming data and fd = -1 so that they are ignored by poll
-/// @param total_cli__fds all file descriptors available accross all threads
+
+/**
+ * @brief Initializes pollfd structures for incoming data.
+ * 
+ * This function initializes the pollfd structures for incoming data. It sets the file descriptors to -1
+ * so that they are ignored by poll.
+ * 
+ * @param total_cli__fds All file descriptors available across all threads.
+ */
 inline void net_init_clifd(pollfd_t **total_cli__fds)
 {
-  for (size_t i = 0; i < SERVER_THREAD_NO; i++)
-    for (size_t j = 0; j < CLIENTS_PER_THREAD; j++){
+  for (size_t i = 0; i < SERVER_THREAD_NO; i++) {
+    for (size_t j = 0; j < CLIENTS_PER_THREAD; j++) {
+      // Set file descriptor to -1 so that it is ignored by poll
       total_cli__fds[i][j].fd = -1;
       total_cli__fds[i][j].events = 0;
       total_cli__fds[i][j].revents = 0;
     }
+  }
 }
 
 
-/// @brief 
-/// @param thread_cli__fds 
-/// @param db_connect 
-/// @param new_cli_fd 
-/// @param new_addr 
-/// @param addr_len 
-/// @return 
+
+
+/**
+ * @brief Adds a new client file descriptor to a thread's list.
+ * 
+ * This function adds a new client file descriptor, along with its address and length, to a specific thread's list of file descriptors.
+ * 
+ * @param thread_cli__fds Pointer to the list of file descriptors for the thread.
+ * @param db_connect Pointer to the MySQL database connection.
+ * @param new_cli_fd New client file descriptor to add.
+ * @param new_addr Address of the new client.
+ * @param addr_len Length of the address.
+ * @return __SUCCESS__ if the client file descriptor is added successfully, __FAILURE__ if an error occurs, or MAX_FDS_IN_THREAD if the maximum number of file descriptors per thread is reached.
+ */
 static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, MYSQL *db_connect, sockfd_t new_cli_fd, sockaddr_t new_addr, socklen_t addr_len)
 {
   co_t co_new;
-  for (size_t i = 0; i < CLIENTS_PER_THREAD; i++)
-    if (thread_cli__fds[i].fd == -1)
-    {
+  
+  // Iterate through the thread's list of file descriptors
+  for (size_t i = 0; i < CLIENTS_PER_THREAD; i++) {
+    // Find an empty slot in the list of file descriptors
+    if (thread_cli__fds[i].fd == -1) {
+      // Add the new client file descriptor to the list
       thread_cli__fds[i].fd = new_cli_fd;
-      thread_cli__fds[i].events = POLLIN | POLLPRI;  // we set the events to priority bcs the client did not auth yet
-      // create connection instance
-      if (net_co_create(&co_new, new_cli_fd, new_addr, addr_len))
+      thread_cli__fds[i].events = POLLIN | POLLPRI; // Set events to priority because the client has not authenticated yet
+      
+      // Create a new connection instance
+      if (net_co_create(&co_new, new_cli_fd, new_addr, addr_len) != __SUCCESS__)
         return __FAILURE__;
-      // save instance to database Connection table
-      pthread_mutex_lock(&mutex_connection_global); // lock the mutex for writing to db conenction object
-      if (db_co_insert(db_connect, co_new)){
-        pthread_mutex_unlock(&mutex_connection_global); // unlock the mutex 
+      
+      // Save the connection instance to the database Connection table
+      pthread_mutex_lock(&mutex_connection_global); // Lock the mutex for writing to the database connection object
+      if (db_co_insert(db_connect, co_new) != __SUCCESS__) {
+        pthread_mutex_unlock(&mutex_connection_global); // Unlock the mutex 
         return __FAILURE__;
       }
-      pthread_mutex_unlock(&mutex_connection_global); // unlock the mutex 
+      pthread_mutex_unlock(&mutex_connection_global); // Unlock the mutex 
       return __SUCCESS__;
     }
+  }
+  
+  // If the maximum number of file descriptors per thread is reached
   return MAX_FDS_IN_THREAD;
 }
 
 
-/// @brief 
-/// @param thread_arg 
-/// @param new_cli_fd 
-/// @param new_addr 
-/// @param addr_len 
-/// @return 
+
+
+/**
+ * @brief Adds a new client file descriptor to each thread's list.
+ * 
+ * This function iterates through each thread and attempts to add the new client file descriptor,
+ * along with its address and length, to the thread's list of file descriptors.
+ * 
+ * @param thread_arg Pointer to the thread_arg_t structure.
+ * @param new_cli_fd New client file descriptor to add.
+ * @param new_addr Address of the new client.
+ * @param addr_len Length of the address.
+ * @return __SUCCESS__ if the client file descriptor is added successfully, MAX_FDS_IN_PROGRAM if the maximum number of file descriptors is reached, or __FAILURE__ for other errors.
+ */
 static inline errcode_t net_add_clifd(thread_arg_t *thread_arg, sockfd_t new_cli_fd, sockaddr_t new_addr, socklen_t addr_len)
 {
-  for (size_t i = 0; i < SERVER_THREAD_NO; i++)
-    if (net_add_clifd_to_thread(thread_arg->total_cli__fds[i], thread_arg->db_connect, new_cli_fd, new_addr, addr_len))
+  for (size_t i = 0; i < SERVER_THREAD_NO; i++) {
+    if (net_add_clifd_to_thread(thread_arg->total_cli_fds[i], thread_arg->db_connect, new_cli_fd, new_addr, addr_len)) {
+      // Log error if maximum number of file descriptors is reached
       return LOG(NET_LOG_PATH, MAX_FDS_IN_PROGRAM, MAX_FDS_IN_PROGRAM_M);
+    }
+  }
+  
   return __SUCCESS__;
 }
 
 
-/// @brief 
-/// @param thread_arg 
-/// @return 
+
+/**
+ * @brief Accepts a new connection and saves it.
+ * 
+ * This function accepts a new connection on the server socket and saves it by adding the file descriptor
+ * to the thread's poll list.
+ * 
+ * @param thread_arg Pointer to the thread_arg_t structure.
+ * @return __SUCCESS__ if the new connection is accepted and saved successfully, __FAILURE__ otherwise.
+ */
 static inline errcode_t net_accept_save_new_co(thread_arg_t *thread_arg)
 {
   sockaddr_t new_addr;
   sockfd_t new_fd;
-  socklen_t addr_len;
-  // accept co
-  if ((new_fd = accept(thread_arg->server_fd, &new_addr, &addr_len)) == -1)
+  socklen_t addr_len = sizeof(new_addr); // Initialize addr_len with the size of sockaddr_t
+  
+  // Accept the new connection
+  if ((new_fd = accept(thread_arg->server_fd, &new_addr, &addr_len)) == -1) {
+    // Handle error if accept fails
     return LOG(NET_LOG_PATH, errno, strerror(errno));
+  }
 
-  // add file descriptor to threads poll list
-  if (net_add_clifd(thread_arg, new_fd, new_addr, addr_len))
+  // Add the file descriptor to the thread's poll list
+  if (net_add_clifd(thread_arg, new_fd, new_addr, addr_len) == __FAILURE__) {
+    // Handle error if adding file descriptor fails
     return __FAILURE__;
+  }
+
   return __SUCCESS__;
 }
 
 
-/// @brief event loop for handling incoming connections to the server (executed by the main thread)
-/// @param thread_arg thread argument structure defined in include/threads.h
+
+/**
+ * @brief Event loop for handling incoming connections to the server (executed by the main thread).
+ * 
+ * This function continuously polls for events on the server file descriptor and handles incoming connections.
+ * 
+ * @param thread_arg Pointer to the thread_arg_t structure defined in include/threads.h.
+ * @return __SUCCESS__ on successful execution, D_NET_EXIT if an error occurs.
+ */
 errcode_t net_connection_handler(thread_arg_t *thread_arg)
 {
   pollfd_t __fds[1] = {[0].fd = thread_arg->server_fd, [0].events = POLLPRI, [0].revents = 0};
   int32_t n_events = 0;
-  for (;;)
-  {
+  
+  for (;;) {
     n_events = poll(__fds, 1, CONN_POLL_TIMEOUT);
-    // handling error
-    if (n_events == -1){
+    
+    // Handling error
+    if (n_events == -1) {
       if (net_handle_poll_err(errno))
         return D_NET_EXIT;
       continue;
     }
+    
+    // Accept and save new connection
     net_accept_save_new_co(thread_arg);
   }
+  
   return __SUCCESS__;
 }
+
 
 
 //==========================================================================
@@ -255,103 +363,137 @@ errcode_t net_connection_handler(thread_arg_t *thread_arg)
 //==========================================================================
 
 
-/// @brief disconnect client bcs recv returned 0 (close fd and put last fd in i)
-/// @param __fds list of client file descriptors polled by this thread
-/// @param i index of client file decriptor
-static void cli_dc(MYSQL *db_connect, pollfd_t *__fds, size_t i)
+/**
+ * @brief Disconnect client because recv returned 0 (close fd and update file descriptor array).
+ * 
+ * This function disconnects a client because the recv() syscall returned 0, indicating that the client has closed the connection.
+ * It closes the file descriptor associated with the client and updates the file descriptor array accordingly.
+ * 
+ * @param thread_arg Pointer to a thread_arg_t structure containing thread-specific information.
+ * @param thread_index Index of the thread in the thread pool.
+ * @param client_index Index of the client file descriptor.
+ */
+static void cli_dc(thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
-  size_t j = i;
-  while (__fds[j+1].fd != -1)
-    j++;
-  close(__fds[i].fd);
-  __fds[i].fd = __fds[j].fd;
-  __fds[j].fd = -1;
-  if (db_co_up_auth_stat_by_fd(db_connect, CO_FLAG_DISCO, __fds[i].fd))
-    j = LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M);
+  size_t last_index = client_index;
+  
+  // Find the last active client file descriptor
+  while (thread_arg->total_cli_fds[thread_index][last_index + 1].fd != -1)
+    last_index++;
+  
+  // Close the client file descriptor
+  close(thread_arg->total_cli_fds[thread_index][client_index].fd);
+  
+  // Update the connection authentication status and remove the client file descriptor
+  pthread_mutex_lock(&mutex_connection_auth_status);
+  if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_DISCO, thread_arg->total_cli_fds[thread_index][client_index].fd))
+    LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M);
+  pthread_mutex_unlock(&mutex_connection_auth_status);
+
+  // Move the last active client file descriptor to the position of the disconnected client
+  thread_arg->total_cli_fds[thread_index][client_index].fd = thread_arg->total_cli_fds[thread_index][last_index].fd;
+  thread_arg->total_cli_fds[thread_index][last_index].fd = -1;
 }
 
 
-/// @brief check error value in the recv() syscall
-/// @param __fds list of file descriptors handled by the thread
-/// @param i index of the cli fd
-/// @param __err value of errno
-static errcode_t net_handle_recv_err(MYSQL *db_connect, pollfd_t *__fds, size_t i, errcode_t __err)
+
+/**
+ * @brief Check error value in the recv() syscall and handle accordingly.
+ * 
+ * This function checks the error value returned by the recv() syscall and handles it based on the error code.
+ * 
+ * @param thread_arg Pointer to a thread_arg_t structure containing thread-specific information.
+ * @param thread_index Index of the thread in the thread pool.
+ * @param client_index Index of the client file descriptor.
+ * @param err Value of errno indicating the error.
+ * @return __SUCCESS__ if the error is handled successfully, otherwise appropriate error code.
+ */
+static errcode_t net_handle_recv_err(thread_arg_t *thread_arg, size_t thread_index, size_t client_index, errcode_t err)
 {
-  switch (__err){
+  switch (err) {
     case EWOULDBLOCK || EAGAIN:
       return __SUCCESS__;
   
     case ECONNREFUSED:
-      cli_dc(db_connect, __fds, i);
-      return LOG(NET_LOG_PATH, __err, ECONNREFUSED_M1);
+      cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index);
+      return LOG(NET_LOG_PATH, err, ECONNREFUSED_M1);
     
     case EFAULT:
-      return LOG(NET_LOG_PATH, __err, EFAULT_M1);
+      return LOG(NET_LOG_PATH, err, EFAULT_M1);
     
     case ENOTCONN:
-      cli_dc(db_connect, __fds, i);
-      return LOG(NET_LOG_PATH, __err, ENOTCONN_M1);
+      cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index);
+      return LOG(NET_LOG_PATH, err, ENOTCONN_M1);
 
     case EINTR: 
       return LOG(NET_LOG_PATH, __SUCCESS__, EINTR_M1);
 
     case ENOTSOCK:
-      cli_dc(db_connect, __fds, i);
+      cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index);
       return LOG(NET_LOG_PATH, __SUCCESS__, ENOTSOCK_M1);
     
     case EINVAL:
       return LOG(NET_LOG_PATH, __SUCCESS__, EINVAL_M1);
 
     case ENOMEM: 
-    #if (ATOMIC_SUPPORT)
-      memory_w++;
-    #else
-      pthread_mutex_lock(&mutex_memory_w);
-      memory_w++;
-      pthread_mutex_unlock(&mutex_memory_w);  
-    #endif
+      #if (ATOMIC_SUPPORT)
+        memory_w++;
+      #else
+        pthread_mutex_lock(&mutex_memory_w);
+        memory_w++;
+        pthread_mutex_unlock(&mutex_memory_w);  
+      #endif
       sleep(MEM_WARN_INTV);
-      return LOG(NET_LOG_PATH, __err, ENOMEM_M);
-      break;
+      return LOG(NET_LOG_PATH, err, ENOMEM_M);
+    
+    default:
+      return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
   }
-  return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
 }
 
 
-/// @brief check error value in the send() syscall
-/// @param __fds list of file descriptors handled by the thread
-/// @param i index of the cli fd
-/// @param __err value of errno
-static errcode_t net_handle_send_err(MYSQL *db_connect, pollfd_t *__fds, size_t i, errcode_t __err)
+
+/**
+ * @brief Check error value in the send() syscall and handle accordingly.
+ * 
+ * This function checks the error value returned by the send() syscall and handles it based on the error code.
+ * 
+ * @param thread_arg Pointer to a thread_arg_t structure containing thread-specific information.
+ * @param thread_index Index of the thread in the thread pool.
+ * @param client_index Index of the client file descriptor.
+ * @param err Value of errno indicating the error.
+ * @return __SUCCESS__ if the error is handled successfully, otherwise appropriate error code.
+ */
+static errcode_t net_handle_send_err(thread_arg_t *thread_arg, size_t thread_index, size_t client_index, errcode_t err)
 {
-  switch (__err){
+  switch (err) {
     case EWOULDBLOCK || EAGAIN:
       return __SUCCESS__;
-  
+    
     case ECONNREFUSED:
-      cli_dc(db_connect, __fds, i);
+      cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index][client_index].fd, client_index);
       return LOG(NET_LOG_PATH, __SUCCESS__, ECONNREFUSED_M2);
     
     case EALREADY:
       return LOG(NET_LOG_PATH, __SUCCESS__, EALREADY_M2);
     
     case EFAULT:
-      cli_dc(db_connect, __fds, i);
+      cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index][client_index].fd, client_index);
       return LOG(NET_LOG_PATH, __SUCCESS__, EFAULT_M2);
     
     case EBADF:
-      cli_dc(db_connect, __fds, i);
+      cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index][client_index].fd, client_index);
       return LOG(NET_LOG_PATH, __SUCCESS__, EBADF_M2);
 
     case ECONNRESET:
-      cli_dc(db_connect, __fds, i);
+      cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index][client_index].fd, client_index);
       return LOG(NET_LOG_PATH, __SUCCESS__, ECONNRESET_M2);
 
     case ENOBUFS:
       return LOG(NET_LOG_PATH, __SUCCESS__, ENOBUFS_M2);
 
     case ENOTCONN:
-      cli_dc(db_connect, __fds, i);
+      cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index][client_index].fd, client_index);
       return LOG(NET_LOG_PATH, __SUCCESS__, ENOTCONN_M2);
 
     case EINTR: 
@@ -361,173 +503,266 @@ static errcode_t net_handle_send_err(MYSQL *db_connect, pollfd_t *__fds, size_t 
       return LOG(NET_LOG_PATH, __SUCCESS__, EMSGSIZE_M2);
 
     case ENOTSOCK:
-      cli_dc(db_connect, __fds, i);
+      cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index][client_index].fd, client_index);
       return LOG(NET_LOG_PATH, __SUCCESS__, ENOTSOCK_M2);
     
     case EINVAL:
       return LOG(NET_LOG_PATH, __SUCCESS__, EINVAL_M2);
 
-    case ENOMEM: 
-    #if (ATOMIC_SUPPORT)
-      memory_w++;
-    #else
-      pthread_mutex_lock(&mutex_memory_w);
-      memory_w++;
-      pthread_mutex_unlock(&mutex_memory_w);  
-    #endif
+    case ENOMEM:
+      #if (ATOMIC_SUPPORT)
+        memory_w++;
+      #else
+        pthread_mutex_lock(&mutex_memory_w);
+        memory_w++;
+        pthread_mutex_unlock(&mutex_memory_w);  
+      #endif
       sleep(MEM_WARN_INTV);
-      return LOG(NET_LOG_PATH, __err, ENOMEM_M);
-      break;
+      return LOG(NET_LOG_PATH, err, ENOMEM_M);
+    
+    default:
+      return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
   }
-  return (memory_w == MAX_MEM_WARN) ? D_NET_EXIT : __SUCCESS__;
 }
 
 
-/// @brief send all the data 
-/// @param __fds list of pollfds getting polled
-/// @param i index of client
-/// @param buf buffer to send
-/// @param n len of buffer
-static inline errcode_t sendall(MYSQL *db_connect, pollfd_t *__fds, size_t i, const void *buf, size_t n)
+/**
+ * @brief Send all data to a client.
+ * 
+ * This function attempts to send all data in the provided buffer to the specified client.
+ * 
+ * @param thread_arg Pointer to a thread_arg_t structure containing thread-specific information.
+ * @param thread_index Index of the thread in the thread pool.
+ * @param client_index Index of the client file descriptor.
+ * @param buf Pointer to the buffer containing the data to send.
+ * @param n Length of the data buffer.
+ * @return __SUCCESS__ if all data is sent successfully, otherwise E_SEND_FAILED.
+ */
+static inline errcode_t sendall(thread_arg_t *thread_arg, size_t thread_index, size_t client_index, const void *buf, size_t n)
 {
-  ssize_t rest = n, sent;
-  int32_t attempts = 0;
-  while (rest){
-    if ((sent = send(__fds[i].fd, buf, n, MSG_DONTWAIT | MSG_OOB)) == -1){
-      if (net_handle_send_err(db_connect, __fds, i, errno))
+  ssize_t total_sent = 0;
+  const char *ptr = buf;
+
+  while (total_sent < n) {
+    ssize_t sent = send(thread_arg->total_cli_fds[thread_index][client_index].fd, ptr + total_sent, n - total_sent, MSG_DONTWAIT | MSG_OOB);
+
+    if (sent == -1) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // Socket buffer is full, try again later
+        continue;
+      }
+      if (net_handle_send_err(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index, errno)) {
         pthread_exit(NULL);
-      else
+      } else {
         return E_SEND_FAILED;
+      }
     }
-    if (attempts == 4)
-      return E_SEND_FAILED;
-    rest = n - sent;
+
+    if (sent == 0) {
+      // Socket closed unexpectedly
+      if (net_handle_send_err(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index, EPIPE)) {
+        pthread_exit(NULL);
+      } else {
+        return E_SEND_FAILED;
+      }
+    }
+
+    total_sent += sent;
   }
+
   return __SUCCESS__;
 }
 
 
-/// @brief check for data availaibility coming from file descriptor
-/// @param __fds list of file descriptors handled by the thread
-/// @param i index of the cli fd
-/// @param buf buffer to contain the stream
-/// @return 1--->DATA_AVAILABLE  0--->DATA_UNAVAILABLE
-static errcode_t net_data_available(MYSQL *db_connect, pollfd_t *__fds, size_t i, void *buf)
+
+/**
+ * @brief Check for data availability coming from a file descriptor.
+ * 
+ * This function checks if there is data available for reading on the specified file descriptor.
+ * 
+ * @param thread_arg Pointer to a thread_arg_t structure containing thread-specific information.
+ * @param thread_index Index of the thread in the thread pool.
+ * @param client_index Index of the client file descriptor.
+ * @param buf Pointer to a buffer to contain the incoming data stream.
+ * @return DATA_AVAILABLE if data is available, otherwise DATA_UNAVAILABLE.
+ */
+static errcode_t net_data_available(thread_arg_t *thread_arg, size_t thread_index, size_t client_index, void *buf)
 {
+  int32_t mss, recv_result, err;
+  socklen_t mss_len = sizeof(mss);
   
-  int32_t mss, __err;
-  socklen_t mss_len = sizeof mss;
-  if (GET__MSS(__fds[i].fd, mss, mss_len) == -1) // minimum TP/IP segment size agreed on upon TCP's three way handshake
-    return DATA_UNAVAILABLE;
+  // Retrieve the Maximum Segment Size (MSS) for the TCP connection
+  if (GET_MSS(thread_arg->total_cli_fds[thread_index][client_index].fd, &mss, &mss_len) == -1)
+    return DATA_UNAVAILABLE; // Failed to retrieve MSS
+  
+  // Allocate memory for the buffer based on MSS
   buf = malloc((size_t)mss);
   
-  switch (recv(__fds[i].fd, buf, (size_t)mss, MSG_DONTWAIT | MSG_OOB))
+  // Attempt to receive data from the client socket
+  recv_result = recv(thread_arg->total_cli_fds[thread_index][client_index].fd, buf, (size_t)mss, MSG_DONTWAIT | MSG_OOB);
+  
+  // Handle different cases of recv_result
+  switch (recv_result)
   {
-    // error
-    case -1:
-      free(buf);
-      buf = NULL;
-      __err = errno;
-      if (net_handle_recv_err(db_connect, __fds, i, __err))// critical error
-        pthread_exit(NULL);// terminate thread
-      return DATA_UNAVAILABLE;
-    // client disconnects
-    case 0:
-      free(buf);
-      buf = NULL;
-      cli_dc(db_connect, __fds[i].fd, i);
-      return DATA_UNAVAILABLE;
-    default:// data available
-      return DATA_AVAILABLE;
+  case -1: // Error occurred
+    free(buf);
+    buf = NULL;
+    err = errno;
+    if (net_handle_recv_err(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index, err))
+      pthread_exit(NULL); // Critical error, terminate thread
+    return DATA_UNAVAILABLE;
+  case 0: // Client disconnected
+    free(buf);
+    buf = NULL;
+    cli_dc(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index][client_index].fd, client_index);
+    return DATA_UNAVAILABLE;
+  default: // Data available
+    return DATA_AVAILABLE;
   }
 }
 
 
-/// @brief iterate over client file descriptor to check which ones have data incoming
-/// @param __fds list of file descriptors handled by the thread
-static inline void net_check_clifds(MYSQL *db_connect, pollfd_t *__fds)
+
+/**
+ * @brief Iterate over client file descriptors to check which ones have incoming data.
+ * 
+ * This function iterates over the list of client file descriptors handled by the thread
+ * to check which ones have incoming data available for reading.
+ * 
+ * @param thread_arg Pointer to a thread_arg_t structure containing thread-specific information.
+ * @param thread_index Index of the thread in the thread pool.
+ */
+static inline void net_check_clifds(thread_arg_t *thread_arg, size_t thread_index)
 {
-  size_t i = 0;
-  void *buf = NULL;
-  while (__fds[i].fd != -1 && ((__fds[i].revents & POLLIN) || (__fds[i].revents & POLLPRI))){
-    if (buf)
-      free(buf);
-    if (net_data_available(db_connect, __fds, i, buf)){   // check if client's RCVBUFF is available
-      if (__fds[i].revents & POLLPRI)
+  size_t client_index = 0;
+  void *buffer = NULL;
+  
+  // Iterate over client file descriptors
+  while (thread_arg->total_cli_fds[thread_index][client_index].fd != -1 && 
+         ((thread_arg->total_cli_fds[thread_index][client_index].revents & POLLIN) || 
+          (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLPRI)))
+  {
+    if (buffer)
+      free(buffer);
+    
+    // Check if data is available on the client's receive buffer
+    if (net_data_available(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index, buffer))
+    {
+      if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLPRI)
       {
-        // call for request module to handle authentication
-        if (req_pri_request_handle(buf, db_connect, __fds, i))
+        // Call request module to handle priority requests (e.g., authentication)
+        if (req_pri_request_handle(buffer, thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index))
           return __FAILURE__;
       }
-      else if (__fds[i].revents & POLLIN)
+      else if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLIN)
       {
-        // call for request module to parse and handle data reception
-        if (req_request_handle(buf, db_connect, __fds, i))
+        // Call request module to parse and handle regular data reception
+        if (req_request_handle(buffer, thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index))
           return __FAILURE__;
       }
     }
-    ++i;
+    ++client_index;
   }
 }
 
 
-/// @brief handler for incoming client data (called by the additionally created threads)
-/// @param args hint to the struct defined in header for threads
-/// @return errcode NULL for now
+
+/**
+ * @brief Handler for incoming client data (called by the additionally created threads).
+ * 
+ * This function is responsible for handling incoming client data in a multi-threaded environment.
+ * It continuously polls for events on the client file descriptors associated with the thread.
+ * 
+ * @param args Pointer to a thread_arg_t structure containing thread-specific information.
+ * @return Always returns NULL.
+ */
 void *net_communication_handler(void *args)
 {
   thread_arg_t *thread_arg = (thread_arg_t *)args;
-  pollfd_t *__fds = thread_arg->total_cli__fds[thread_arg->thread_id];
+  uint32_t thread_num = thread_arg->thread_id;
+  
+  // Destroy mutex if this thread is the server thread and atomic support is not enabled
   #if (!ATOMIC_SUPPORT)
     pthread_mutex_unlock(&mutex_thread_id);
     if (thread_arg->thread_id == SERVER_THREAD_NO)
       pthread_mutex_destroy(&mutex_thread_id);
   #endif
+  
   int32_t n_events;
   for (;;)
   {
-    while (!(n_events = poll(__fds, CLIENTS_PER_THREAD, COMM_POLL_TIMEOUT))) // do testings on the timeout value
+    // Poll for events on client file descriptors
+    while (!(n_events = poll(thread_arg->total_cli_fds[thread_num], CLIENTS_PER_THREAD, COMM_POLL_TIMEOUT)))
       continue;
+    
+    // Handle poll errors
     switch (n_events)
     {
-    case -1: // error occured
+    case -1: // Error occurred
       if (net_handle_poll_err(errno))
         pthread_exit(NULL);
       continue;
-    default:  // incoming data
-      net_check_clifds(thread_arg->db_connect, __fds);
+    default:  // Incoming data
+      net_check_clifds(thread_arg, thread_num);
     }
   }
+  
+  // This should never be reached, but pthread_exit is used for safety
   pthread_exit(NULL);
 }
+
 
 
 //==========================================================================
 //           COMMUNICATION PROTOCOL'S HANDSHAKES + AUTHENTICATION
 //==========================================================================
 
-/// @section    CLIENT AUTHENTICATION OVER THE NETWORK + KEY-EXCHANGE PROTOCOL 
-/// @attention This section performs key exchanges over network it is not to be changed.
-/// @attention only if the other end of the communication agrees on it.
-/// @attention to ensure performance and valid communication cycles
-/// @brief These functions in this section will mostly be called by the request handler module
-/// @brief 1- send public key 
-/// @brief 2- recv encrypted symmetric key + encrypted secret bytes
-/// @brief 3- fetch the public and secret key from the database
-/// @brief 4- decrypt the secret key + decrypt the secret bytes 
-/// @brief 5- send the secret bytes encrypted by the secret key
-/// @brief 6- recv the connected flag ----> REQ_VALID_SYMKEY
-/// @attention You should check which functions set key memory space to 0 after usage !!
+/**
+ * @section CLIENT AUTHENTICATION OVER THE NETWORK + KEY-EXCHANGE PROTOCOL
+ * 
+ * @attention This section handles key exchanges over the network and should not be altered,
+ *            unless both ends of the communication agree on it.
+ *            Ensure performance and valid communication cycles.
+ * 
+ * @brief Functions in this section are primarily called by the request handler module.
+ * 
+ * @brief 1. Send Public Key
+ *        2. Receive Encrypted Symmetric Key + Encrypted Secret Bytes
+ *        3. Fetch Public and Secret Key from the database
+ *        4. Decrypt the Secret Key + Decrypt the Secret Bytes
+ *        5. Send the Secret Bytes Encrypted by the Secret Key
+ *        6. Receive the Connected Flag (REQ_VALID_SYMKEY)
+ * 
+ * @attention Check which functions zero out key memory space after usage.
+ */
 
 
-errcode_t net_send_pk(MYSQL *db_connect, pollfd_t *__fds, size_t i)
+
+/**
+ * @brief Sends the public key to the client.
+ * 
+ * This function retrieves the public key from the database and sends it to the client identified by the thread and client indices.
+ * 
+ * @param thread_arg Pointer to the thread_arg_t structure.
+ * @param thread_index Index of the thread.
+ * @param client_index Index of the client.
+ * @return __SUCCESS__ if the public key is sent successfully, or an error code if sending fails or retrieving the public key from the database fails.
+ */
+errcode_t net_send_pk(thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   uint8_t pk[crypto_box_PUBLICKEYBYTES];
-  if (db_get_pk(db_connect, pk))
+  
+  // Retrieve the public key from the database
+  if (db_get_pk(thread_arg->db_connect, pk))
     return __FAILURE__;
-  if (sendall(db_connect, __fds, i, pk, crypto_box_PUBLICKEYBYTES))
+  
+  // Send the public key to the client
+  if (sendall(thread_arg, thread_index, client_index, pk, crypto_box_PUBLICKEYBYTES))
     return LOG(SECU_LOG_PATH, E_SEND_PK, E_SEND_PK_M);
   
+  // Clear the public key from memory after sending
   bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
+  
   return __SUCCESS__;
 }
+

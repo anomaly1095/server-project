@@ -1,5 +1,6 @@
 
 
+
 #ifndef NETWORK_H
 #define NETWORK_H       1
 #include "request.h"
@@ -107,22 +108,67 @@ int32_t __KEEPCNTR  = 5;  // 5 repetitions
 #define CONN_POLL_TIMEOUT -1  // poll untill new connection received
 #define COMM_POLL_TIMEOUT 10  // 10 milliseconds
 
-/// @brief setting up the server (socket / bind / options / listen)
-/// @param server_addr server's address
-/// @param server_fd server's socket file descriptor
+/**
+ * @brief Initializes pollfd structures for incoming data.
+ * 
+ * This function initializes the pollfd structures for incoming data. It sets the file descriptors to -1
+ * so that they are ignored by poll.
+ * 
+ * @param total_cli__fds All file descriptors available across all threads.
+ */
+void net_init_clifd(pollfd_t **total_cli__fds);
+
+
+/// @brief Setting up the server (socket / bind / options / listen)
+/// @param server_addr Pointer to the server's address structure
+/// @param server_fd Pointer to the server's socket file descriptor
+/// @return Error code indicating success or failure
 errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd);
 
-/// @brief handler for incoming client connections (called by the program's main thread)
-/// @param thread_arg struct to be passwed as to each thread 
-/// in this case it is the main thread
+
+/**
+ * @brief Initializes pollfd structures for incoming data.
+ * 
+ * This function initializes the pollfd structures for incoming data. It sets the file descriptors to -1
+ * so that they are ignored by poll.
+ * 
+ * @param total_cli__fds All file descriptors available across all threads.
+ */
+inline void net_init_clifd(pollfd_t **total_cli__fds);
+
+
+/**
+ * @brief Event loop for handling incoming connections to the server (executed by the main thread).
+ * 
+ * This function continuously polls for events on the server file descriptor and handles incoming connections.
+ * 
+ * @param thread_arg Pointer to the thread_arg_t structure defined in include/threads.h.
+ * @return __SUCCESS__ on successful execution, D_NET_EXIT if an error occurs.
+ */
 errcode_t net_connection_handler(thread_arg_t *thread_arg);
 
-
-/// @brief handler for incoming client data (called by the additionally created threads)
-/// @brief this ufunction will be passed to threads as function pointers and not directly
-/// @param args hint to the struct defined in /include/base.h (thread_arg_t *thread_arg)
-/// @return errcode status
+/**
+ * @brief Handler for incoming client data (called by the additionally created threads).
+ * 
+ * This function is responsible for handling incoming client data in a multi-threaded environment.
+ * It continuously polls for events on the client file descriptors associated with the thread.
+ * 
+ * @param args Pointer to a thread_arg_t structure containing thread-specific information.
+ * @return Always returns NULL.
+ */
 void *net_communication_handler(void *args);
+
+/**
+ * @brief Sends the public key to the client.
+ * 
+ * This function retrieves the public key from the database and sends it to the client identified by the thread and client indices.
+ * 
+ * @param thread_arg Pointer to the thread_arg_t structure.
+ * @param thread_index Index of the thread.
+ * @param client_index Index of the client.
+ * @return __SUCCESS__ if the public key is sent successfully, or an error code if sending fails or retrieving the public key from the database fails.
+ */
+errcode_t net_send_pk(thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
 
 
 #endif

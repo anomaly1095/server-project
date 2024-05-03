@@ -113,6 +113,8 @@ typedef struct Connection
 }__attribute((packed));
 typedef struct Connection co_t;
 
+#define CO_NROWS 8
+
 //----VALUES OF THE co_auth_status FLAG---
 /// @brief the client has connected but not done any authentication steps
 #define CO_FLAG_NO_AUTH     0b00000000 
@@ -145,6 +147,11 @@ VALUES (?, ?, NOW(), ?, ?, ?, ?);"
 #define QUERY_CO_INSERT_LEN \
 (__builtin_strlen(QUERY_CO_INSERT))
 
+/// @brief function to insert new connection in database
+/// @param db_connect MYSQL database connection
+/// @param co_new new connection object
+errcode_t db_co_insert(MYSQL *db_connect, const co_t co_new);
+
 //---------------------------DELETE
 
 ///@brief query to delete from database by id
@@ -152,10 +159,25 @@ VALUES (?, ?, NOW(), ?, ?, ?, ?);"
 #define QUERY_CO_DEL_BYID_LEN \
 (__builtin_strlen(QUERY_CO_DEL_BYID))
 
+/// @brief function to delete connection from database by id
+/// @param db_connect MYSQL database connection
+/// @param co_id connection id
+errcode_t db_co_del_byid(MYSQL *db_connect, const id64_t co_id);
+
+//--------------------
+
 ///@brief query to delete from database by ip address and port num
 #define QUERY_CO_DEL_BYADDR "DELETE FROM Connection WHERE co_ip_addr = ? AND co_port = ?;"
 #define QUERY_CO_DEL_BYADDR_LEN \
 (__builtin_strlen(QUERY_CO_DEL_BYADDR))
+
+/// @brief function to delete connection by address from database
+/// @param db_connect MYSQL database connection
+/// @param co_ip_addr BIG ENDIAN binary ip address
+/// @param co_port BIG ENDIAN port of the connection
+errcode_t db_co_del_byaddr(MYSQL *db_connect, uint8_t *co_ip_addr, const int16_t co_port);
+
+//--------------------
 
 ///@brief query to get all data by datetime of last connection
 #define QUERY_CO_CLEANUP "DELETE FROM Connection WHERE \
@@ -163,9 +185,23 @@ co_last_co <= NOW() - INTERVAL " STR(CLEANUP_HOURS) " HOUR;"
 #define QUERY_CO_CLEANUP_LEN \
 (__builtin_strlen(QUERY_CO_CLEANUP))
 
+/// @brief function to delete all connection rows that where not connected for ... hours (set in the database header query)
+/// @param db_connect MYSQL database connection
+errcode_t db_co_cleanup(MYSQL *db_connect);
+
+//--------------------
+
 #define QUERY_CO_RESET "DELETE FROM Connection"
 #define QUERY_CO_RESET_LEN \
 (__builtin_strlen(QUERY_CO_RESET))
+
+#define QUERY_CO_RES_ID "ALTER TABLE Connection AUTO_INCREMENT = 1"
+#define QUERY_CO_RES_ID_LEN \
+(__builtin_strlen(QUERY_CO_RES_ID))
+
+/// @brief function to reset the Connection table 
+/// @param db_connect MYSQL database connection
+errcode_t db_co_res(MYSQL *db_connect);
 
 //---------------------------SELECT
 
@@ -174,86 +210,6 @@ co_last_co <= NOW() - INTERVAL " STR(CLEANUP_HOURS) " HOUR;"
 #define QUERY_CO_SEL_ALL_BY_ID_LEN \
 (__builtin_strlen(QUERY_CO_SEL_ALL_BY_ID))
 
-///@brief query to get all data by file descriptor
-#define QUERY_CO_SEL_ALL_BY_FD "SELECT * FROM Connection WHERE co_fd = %d;"
-#define QUERY_CO_SEL_ALL_BY_FD_LEN \
-(__builtin_strlen(QUERY_CO_SEL_ALL_BY_FD))
-
-///@brief query to get all data by authentication status 
-#define QUERY_CO_SEL_ALL_BY_AUTH_STAT "SELECT * FROM Connection WHERE co_auth_status = %u;"
-#define QUERY_CO_SEL_ALL_BY_AUTH_STAT_LEN \
-(__builtin_strlen(QUERY_CO_SEL_ALL_BY_AUTH_STAT))
-
-///@brief query to get all data with ip address
-#define QUERY_CO_SEL_ALL_BY_IP "SELECT * FROM Connection WHERE co_ip_addr = ?;"
-#define QUERY_CO_SEL_ALL_BY_IP_LEN \
-(__builtin_strlen(QUERY_CO_SEL_ALL_BY_IP))
-
-///@brief query to get all data with ip address
-#define QUERY_CO_SEL_KEY_BY_ADDR "SELECT co_key FROM Connection WHERE co_ip_addr = ? AND co_port = ?;"
-#define QUERY_CO_SEL_KEY_BY_ADDR_LEN \
-(__builtin_strlen(QUERY_CO_SEL_KEY_BY_ADDR))
-
-
-//---------------------------ALTER
-
-#define QUERY_CO_RES_ID "ALTER TABLE Connection AUTO_INCREMENT = 1"
-#define QUERY_CO_RES_ID_LEN \
-(__builtin_strlen(QUERY_CO_RES_ID))
-
-//---------------------------UPDATE
-
-#define QUERY_CO_UP_FD_BY_ID "UPDATE Connection \
-SET co_fd = %d WHERE co_id = %llu;"
-#define QUERY_CO_UP_FD_BY_ID_LEN \
-(__builtin_strlen(QUERY_CO_UP_FD_BY_ID))
-
-#define QUERY_CO_UP_FD_BYADDR "UPDATE Connection \
-SET co_fd = ? WHERE co_ip_addr = ? and co_port = ?;"
-#define QUERY_CO_UP_FD_BYADDR_LEN \
-(__builtin_strlen(QUERY_CO_UP_FD_BYADDR))
-
-
-#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID "UPDATE Connection \
-SET co_auth_status = %u WHERE co_id = %llu;"
-#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID_LEN \
-(__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID))
-
-#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD "UPDATE Connection \
-SET co_auth_status = %u WHERE co_fd = %d;"
-#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD_LEN \
-(__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD))
-
-#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ADDR "UPDATE Connection \
-SET co_auth_status = ? WHERE co_ip_addr = ? AND co_port = ?;"
-#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ADDR_LEN \
-(__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_ADDR))
-
-#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_LAST_CO "UPDATE Connection \
-SET co_auth_status = %u WHERE co_last_co >= NOW() - INTEVAL %u " STR(DISCO_HOURS) " HOUR;"
-#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_LAST_CO_LEN \
-(__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_LAST_CO))
-
-
-
-/// @brief function to insert new connection in database
-/// @param db_connect MYSQL database connection
-/// @param co_new new connection object
-errcode_t db_co_insert(MYSQL *db_connect, const co_t co_new);
-
-
-/// @brief function to delete connection by address from database
-/// @param db_connect MYSQL database connection
-/// @param co_ip_addr BIG ENDIAN binary ip address
-/// @param co_port BIG ENDIAN port of the connection
-errcode_t db_co_del_byaddr(MYSQL *db_connect, uint8_t *co_ip_addr, const int16_t co_port);
-
-
-/// @brief function to delete all connection rows that where not connected for ... hours (set in the database header query)
-/// @param db_connect MYSQL database connection
-errcode_t db_co_cleanup(MYSQL *db_connect);
-
-
 /// @attention Memory will be allocated internally for co object
 /// @brief get all columns by id
 /// @param db_connect MYSQL database connection
@@ -261,6 +217,12 @@ errcode_t db_co_cleanup(MYSQL *db_connect);
 /// @param co_id id of the connection
 errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id);
 
+//--------------------
+
+///@brief query to get all data by file descriptor
+#define QUERY_CO_SEL_ALL_BY_FD "SELECT * FROM Connection WHERE co_fd = %d;"
+#define QUERY_CO_SEL_ALL_BY_FD_LEN \
+(__builtin_strlen(QUERY_CO_SEL_ALL_BY_FD))
 
 /// @attention Memory will be allocated internally for co objects and nrow set internally
 /// @attention Should only be used in case of short interval db_cleanups 
@@ -271,6 +233,12 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id);
 /// @param co_fd file descriptor number we are looking for
 errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const sockfd_t co_fd);
 
+//--------------------
+
+///@brief query to get all data by authentication status 
+#define QUERY_CO_SEL_ALL_BY_AUTH_STAT "SELECT * FROM Connection WHERE co_auth_status = %u;"
+#define QUERY_CO_SEL_ALL_BY_AUTH_STAT_LEN \
+(__builtin_strlen(QUERY_CO_SEL_ALL_BY_AUTH_STAT))
 
 /// @attention Memory will be allocated internally
 /// @brief get all columns by id
@@ -280,6 +248,12 @@ errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const 
 /// @param co_auth_status 
 errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow, const flag_t co_auth_status);
 
+//--------------------
+
+///@brief query to get all data with ip address
+#define QUERY_CO_SEL_ALL_BY_ADDR "SELECT * FROM Connection WHERE co_ip_addr = ? AND co_port = ?;"
+#define QUERY_CO_SEL_ALL_BY_ADDR_LEN \
+(__builtin_strlen(QUERY_CO_SEL_ALL_BY_ADDR))
 
 /// @attention Memory will be allocated internally for co objects and nrow set internally
 /// @brief get all columns by ip address
@@ -287,54 +261,29 @@ errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
 /// @param co non allocated connection object
 /// @param nrow number of rows returned by the query 
 /// @param co_ip_addr ip address big endian byte order
-errcode_t db_co_sel_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr);
+errcode_t db_co_sel_all_by_addr(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr, const in_port_t co_port);
 
+//--------------------
 
+///@brief query to get all data with ip address
+#define QUERY_CO_SEL_KEY_BY_ADDR "SELECT co_key FROM Connection WHERE co_ip_addr = ? AND co_port = ?;"
+#define QUERY_CO_SEL_KEY_BY_ADDR_LEN \
+(__builtin_strlen(QUERY_CO_SEL_KEY_BY_ADDR))
 
 /// @attention Memory will be allocated internally for co objects and nrow set internally
 /// @brief get symmetric key for client that has that address pair (ip, port)
 /// @param db_connect MYSQL database connection
-/// @param key symmetric key
+/// @param co_key symmetric key
 /// @param co_ip_addr connection ip address big endian byte order
 /// @param co_port  connection port big endian byte order
-errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, uint8_t *key, const uint8_t *co_ip_addr, const in_port_t co_port);
+errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const uint8_t *co_ip_addr, const in_port_t co_port);
 
-/// @brief function to reset the Connection table 
-/// @param db_connect MYSQL database connection
-errcode_t db_co_res(MYSQL *db_connect);
+//---------------------------UPDATE
 
-
-/// @attention Memory will be allocated internally for co object
-/// @brief get all columns by id
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param co_id id of the connection
-errcode_t db_co_get_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id);
-
-/// @attention Memory will be allocated internally for co objects and nrow set internally
-/// @attention Should only be used in case of short interval db_cleanups 
-/// @brief get all columns of all rows matching co_fd
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param nrow number of rows returned by the query 
-/// @param co_fd file descriptor number we are looking for
-errcode_t db_co_get_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const sockfd_t co_fd);
-
-/// @attention Memory will be allocated internally
-/// @brief get all columns by connection / authenticcation status
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param nrow number of rows returned by the query 
-/// @param co_auth_status connection status
-errcode_t db_co_get_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow, const flag_t co_auth_status);
-
-/// @attention Memory will be allocated internally for co objects and nrow set internally
-/// @brief get all columns by ip address
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param nrow number of rows returned by the query 
-/// @param co_ip_addr ip address big endian byte order
-errcode_t db_co_get_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr);
+#define QUERY_CO_UP_FD_BY_ID "UPDATE Connection \
+SET co_fd = %d WHERE co_id = %llu;"
+#define QUERY_CO_UP_FD_BY_ID_LEN \
+(__builtin_strlen(QUERY_CO_UP_FD_BY_ID))
 
 /// @brief update connection file descriptor to <co_fd> has id <co_id>
 /// @param db_connect MYSQL database connection
@@ -342,12 +291,26 @@ errcode_t db_co_get_all_by_ip(MYSQL *db_connect, co_t **co, size_t *nrow, const 
 /// @param co_id connection id
 errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_id);
 
+//--------------------
+
+#define QUERY_CO_UP_FD_BYADDR "UPDATE Connection \
+SET co_fd = ? WHERE co_ip_addr = ? and co_port = ?;"
+#define QUERY_CO_UP_FD_BYADDR_LEN \
+(__builtin_strlen(QUERY_CO_UP_FD_BYADDR))
+
 /// @brief update connection file descriptor of the <co_ip_addr co_port> addresss pair
 /// @param db_connect MYSQL database connection
 /// @param co_fd socket file descriptor
 /// @param co_ip_addr connection ip address BIG ENDIAN
 /// @param co_port connection port BIG ENDIAN
-errcode_t db_co_up_fd_by_sockaddr(MYSQL *db_connect, sockfd_t co_fd, const uint8_t *co_ip_addr, const in_port_t co_port);
+errcode_t db_co_up_fd_by_addr(MYSQL *db_connect, sockfd_t co_fd, const uint8_t *co_ip_addr, const in_port_t co_port);
+
+//--------------------
+
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID "UPDATE Connection \
+SET co_auth_status = %u WHERE co_id = %llu;"
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID_LEN \
+(__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID))
 
 /// @brief update connection row to <co_auth_status> status that has id = <co_id>
 /// @param db_connect MYSQL database connection
@@ -355,18 +318,39 @@ errcode_t db_co_up_fd_by_sockaddr(MYSQL *db_connect, sockfd_t co_fd, const uint8
 /// @param co_id connection id
 errcode_t db_co_up_auth_stat_by_id(MYSQL *db_connect, flag_t co_auth_status, id64_t co_id);
 
+//--------------------
+
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD "UPDATE Connection \
+SET co_auth_status = %u WHERE co_fd = %d;"
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD_LEN \
+(__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD))
+
 /// @brief update connection row to <co_auth_status> status that has fd = <co_fd>
 /// @param db_connect MYSQL database connection
 /// @param co_auth_status new connection status
 /// @param co_id file descriptor
 errcode_t db_co_up_auth_stat_by_fd(MYSQL *db_connect, flag_t co_auth_status, sockfd_t co_fd);
 
+//--------------------
+
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ADDR "UPDATE Connection \
+SET co_auth_status = ? WHERE co_ip_addr = ? AND co_port = ?;"
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_ADDR_LEN \
+(__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_ADDR))
+
 /// @brief update connection row to <co_auth_status> status that have idaddr = <co_ip_addr> and portnum = <co_port>
 /// @param db_connect MYSQL database connection
 /// @param co_auth_status new connection status
 /// @param co_ip_addr connection ip address BIG ENDIAN
 /// @param co_port connection port BIG ENDIAN
-errcode_t db_co_up_auth_stat_by_sockaddr(MYSQL *db_connect, flag_t co_auth_status, const uint8_t *co_ip_addr, const in_port_t co_port);
+errcode_t db_co_up_auth_stat_by_addr(MYSQL *db_connect, flag_t co_auth_status, const uint8_t *co_ip_addr, const in_port_t co_port);
+
+//--------------------
+
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_LAST_CO "UPDATE Connection \
+SET co_auth_status = %u WHERE co_last_co >= NOW() - INTEVAL %u " STR(DISCO_HOURS) " HOUR;"
+#define QUERY_CO_UP_AUTH_AUTH_STAT_BY_LAST_CO_LEN \
+(__builtin_strlen(QUERY_CO_UP_AUTH_AUTH_STAT_BY_LAST_CO))
 
 /// @brief update connection rows to <co_auth_status> 
 //// status to disconnected that last connected <hours> hours ago
@@ -374,6 +358,26 @@ errcode_t db_co_up_auth_stat_by_sockaddr(MYSQL *db_connect, flag_t co_auth_statu
 /// @param co_auth_status new connection status
 /// @param hours hours of interval with last connection
 errcode_t db_co_up_auth_stat_by_last_co(MYSQL *db_connect);
+
+//--------------------
+
+#define QUERY_CO_UP_KEY_BY_ID "UPDATE Connection SET co_key = ? WHERE co_id = ?;"
+#define QUERY_CO_UP_KEY_BY_ID_LEN (__builtin_strlen(QUERY_CO_UP_KEY_BY_ID))
+errcode_t db_co_up_key_by_id(MYSQL *db_connect, const uint8_t *co_key, id64_t co_id);
+
+//--------------------
+
+#define QUERY_CO_UP_KEY_BY_FD "UPDATE Connection SET co_key = ? WHERE co_fd = ?;"
+#define QUERY_CO_UP_KEY_BY_FD_LEN (__builtin_strlen(QUERY_CO_UP_KEY_BY_FD))
+errcode_t db_co_up_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t co_fd);
+
+//--------------------
+
+#define QUERY_CO_UP_KEY_BY_ADDR "UPDATE Connection SET co_key = ? WHERE co_ip_addr = ? AND co_port = ?;"
+#define QUERY_CO_UP_KEY_BY_ADDR_LEN (__builtin_strlen(QUERY_CO_UP_KEY_BY_ADDR))
+errcode_t db_co_up_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const uint8_t *co_ip_addr, const in_port_t co_port);
+
+//--------------------
 
 
 #endif

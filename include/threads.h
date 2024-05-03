@@ -65,7 +65,7 @@
     sockaddr_t  server_addr;    // no race condition issues with these 2 we will only perform read on them
     sockfd_t    server_fd;      // no race condition issues with these 2 we will only perform read on them
     co_t        **co_head;
-    pollfd_t    total_cli__fds[SERVER_THREAD_NO][SERVER_BACKLOG]; // THIS WILL REQUIRE GOOD HANDLING
+    pollfd_t    total_cli_fds[SERVER_THREAD_NO][SERVER_BACKLOG]; // THIS WILL REQUIRE GOOD HANDLING
     MYSQL      *db_connect;     // all threads will access the db concurrently but it is the db that handles concurrency
     _Atomic uint32_t    thread_id;  // thread identifier
   }thread_arg_t;

@@ -4,8 +4,13 @@
 //      INITIALIZE + CHECK PASSPHRASE
 //===============================================
 
-/// @brief Initialize libsodium 
-/// @return errorcode
+/**
+ * @brief Initialize libsodium library.
+ * 
+ * This function initializes the libsodium library.
+ * 
+ * @return Error code indicating the success or failure of the initialization.
+ */
 inline errcode_t secu_init(void)
 {
   if (sodium_init() == -1)
@@ -13,9 +18,14 @@ inline errcode_t secu_init(void)
   return __SUCCESS__;
 }
 
-
-/// @brief reads the authentication file from the physical key and stores in c
-/// @param c  cipher buffer to fill 
+/**
+ * @brief Read the authentication key from the physical key file.
+ * 
+ * This function reads the authentication key from the physical key file and stores it in the provided buffer.
+ * 
+ * @param c Buffer to store the ciphered for the authentication key.
+ * @return Error code indicating the success or failure of the operation.
+ */
 static inline errcode_t get_auth_key(uint8_t *c)
 {
   FILE *db_privf;
@@ -30,9 +40,14 @@ static inline errcode_t get_auth_key(uint8_t *c)
   return __SUCCESS__;
 }
 
-
-/// @brief checks if password entered is correct (step 1 authentication)
-/// @param pass command line argument entered password
+/**
+ * @brief Check if the provided password is correct.
+ * 
+ * This function checks if the provided password is correct by comparing its hash with the stored authentication key.
+ * 
+ * @param pass Password entered by the user.
+ * @return Error code indicating the success or failure of the operation.
+ */
 errcode_t secu_check_init_cred(const uint8_t *pass)
 {
   uint8_t c1[crypto_hash_sha512_BYTES];
@@ -54,8 +69,15 @@ errcode_t secu_check_init_cred(const uint8_t *pass)
 //      ASYMMETRIC KEY GENERATION
 //===============================================
 
-/// @brief generate asymmetric keypair and write to the database
-/// @param db_connect MYSQL db connection
+/**
+ * @brief Generate asymmetric keypair and write it to the database.
+ * 
+ * This function generates an asymmetric keypair, consisting of a public key and a secret key,
+ * and writes them to the database.
+ * 
+ * @param db_connect MYSQL database connection.
+ * @return Error code indicating the success or failure of the key generation and saving process.
+ */
 errcode_t secu_init_keys(MYSQL *db_connect)
 {
   uint8_t pk[crypto_box_PUBLICKEYBYTES];
@@ -64,23 +86,23 @@ errcode_t secu_init_keys(MYSQL *db_connect)
   if (crypto_box_keypair(pk, sk))
   {
     bzero(pk, crypto_box_PUBLICKEYBYTES);
-    bzero(pk, crypto_box_SECRETKEYBYTES);   
+    bzero(sk, crypto_box_SECRETKEYBYTES);
     return LOG(SECU_LOG_PATH, EKEYPAIR_GEN, EKEYPAIR_GEN_M);
   }
   if (secu_key_del(db_connect))
   {
     bzero(pk, crypto_box_PUBLICKEYBYTES);
-    bzero(pk, crypto_box_SECRETKEYBYTES);   
-    return LOG(SECU_LOG_PATH, EKEYPAIR_DEL, EKEYPAIR_DEL_M);    
+    bzero(sk, crypto_box_SECRETKEYBYTES);
+    return LOG(SECU_LOG_PATH, EKEYPAIR_DEL, EKEYPAIR_DEL_M);
   }
   if (secu_key_save(pk, sk, db_connect))
   {
     bzero(pk, crypto_box_PUBLICKEYBYTES);
-    bzero(pk, crypto_box_SECRETKEYBYTES);   
+    bzero(sk, crypto_box_SECRETKEYBYTES);
     return LOG(SECU_LOG_PATH, EKEYPAIR_SAVE, EKEYPAIR_SAVE_M);
   }
   bzero(pk, crypto_box_PUBLICKEYBYTES);
-  bzero(pk, crypto_box_SECRETKEYBYTES);
+  bzero(sk, crypto_box_SECRETKEYBYTES);
   return __SUCCESS__;
 }
 
@@ -89,11 +111,17 @@ errcode_t secu_init_keys(MYSQL *db_connect)
 //                SECURITY: ENCRYPTION DECRYPTION WITH ASYMMETRIC CRYPTOS
 //===========================================================================================================
 
-/// @brief encrypt m of length mlen with pk then store the cipher in c
-/// @param pk public key
-/// @param c buffer to contain cipher
-/// @param m message to encrypt
-/// @param mlen length of message to encrypt
+/**
+ * @brief Encrypts a message 'm' of length 'mlen' using the public key 'pk' and stores the cipher in 'c'.
+ * 
+ * This function encrypts the message 'm' using the public key 'pk' and stores the resulting cipher in 'c'.
+ * 
+ * @param pk Public key.
+ * @param c Buffer to contain the cipher.
+ * @param m Message to encrypt.
+ * @param mlen Length of the message to encrypt.
+ * @return Error code indicating the success or failure of the encryption process.
+ */
 inline errcode_t secu_asymmetric_encrypt(const uint8_t *pk, uint8_t *c, const void *m, size_t mlen)
 {
   const uint8_t *__m = (const uint8_t *)m;
@@ -102,12 +130,18 @@ inline errcode_t secu_asymmetric_encrypt(const uint8_t *pk, uint8_t *c, const vo
   return __SUCCESS__;
 }
 
-/// @brief decrypt cipher stored in c of length clen with pk and sk then store result in m 
-/// @param pk public key
-/// @param sk secret key
-/// @param m buffer to store decrypted message
-/// @param c cipher to decrypt
-/// @param clen length of cipher to decrypt
+/**
+ * @brief Decrypts a cipher 'c' of length 'clen' using the public key 'pk' and secret key 'sk', storing the result in 'm'.
+ * 
+ * This function decrypts the cipher 'c' using the public key 'pk' and secret key 'sk', and stores the resulting message in 'm'.
+ * 
+ * @param pk Public key.
+ * @param sk Secret key.
+ * @param m Buffer to store the decrypted message.
+ * @param c Cipher to decrypt.
+ * @param clen Length of the cipher to decrypt.
+ * @return Error code indicating the success or failure of the decryption process.
+ */
 inline errcode_t secu_asymmetric_decrypt(const uint8_t *pk, const uint8_t *sk, void *m, const uint8_t *c, size_t clen)
 {
   uint8_t *__m = (uint8_t *)m;
@@ -115,13 +149,6 @@ inline errcode_t secu_asymmetric_decrypt(const uint8_t *pk, const uint8_t *sk, v
     return LOG(SECU_LOG_PATH, E_ASYMM_DECRYPT, E_ASYMM_DECRYPT_M);
   return __SUCCESS__;
 }
-
-
-//===============================================
-//      SYMMETRIC KEY GENERATION
-//===============================================
-
-
 
 
 //===========================================================================================================
