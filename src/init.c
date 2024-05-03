@@ -1,4 +1,4 @@
-#include "../include/init.h"
+#include "../include/network.h"
 
 
 /**
@@ -50,32 +50,34 @@ errcode_t __init(thread_arg_t *thread_arg)
   return __SUCCESS__;
 }
 
-
 /**
- * @brief Initialize an array to hold thread identifiers.
- * 
- * @return Pointer to the array of pthread_t.
- */
-inline pthread_t *thread_init(void)
-{
-  return (pthread_t *)malloc(sizeof(pthread_t) * SERVER_THREAD_NO);
-}
-
-/**
- * @brief Create and run server threads.
+ * @brief ..
+ * Initialize an array to hold thread identifiers. 
+ * creat"e the mutexes
+ * Create and run server threads with there unique identifiers.
  * 
  * @param threads Array of thread identifiers.
  * @param thread_arg Pointer to the thread_arg_t structure.
  */
-inline void run_threads(pthread_t *threads, thread_arg_t *thread_arg)
+void run_threads(pthread_t **threads, thread_arg_t *thread_arg)
 {
+  *threads = (pthread_t *)malloc(sizeof(pthread_t) * SERVER_THREAD_NO);
+  // Initialize mutexes
+  pthread_mutex_init(&mutex_connection_global, NULL);
+  pthread_mutex_init(&mutex_connection_fd, NULL);
+  pthread_mutex_init(&mutex_connection_auth_status, NULL);
+#if (!ATOMIC_SUPPORT) // these wont be used in case of atomicity cpu & compiler support
+
+  pthread_mutex_init(&mutex_thread_id, NULL);
+  pthread_mutex_init(&mutex_memory_w, NULL);
+#endif
   for (size_t i = 0; i < SERVER_THREAD_NO; i++)
   {
     #if (!ATOMIC_SUPPORT)
       pthread_mutex_lock(&mutex_thread_id);
     #endif
     thread_arg->thread_id = i;
-    pthread_create(threads + i, NULL, &net_communication_handler, (void *)thread_arg);
+    pthread_create(*threads + i, NULL, &net_communication_handler, (void *)thread_arg);
   }
 }
 
@@ -92,7 +94,8 @@ inline void run_threads(pthread_t *threads, thread_arg_t *thread_arg)
 inline errcode_t total_cleanup(MYSQL *db_connect, pthread_t *threads, errcode_t __err)
 {
   // Free memory allocated for threads
-  free(threads);
+  if (threads)
+    free(threads);
   
   // Close database connection
   mysql_close(db_connect);

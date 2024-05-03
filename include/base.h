@@ -31,8 +31,8 @@ typedef struct hostent  hostent_t;
 
 
 #define MAX_AUTH_SIZE 128U
-
-#define DATETIME_FORM (const char *)"%Y-%m-%d %H:%M:%S"
+#define DATETIME_MAX_LEN 21U
+#define DATETIME_FORMAT (const char *)"%Y-%m-%d %H:%M:%S"
 #define LOG_FORMAT    (const char *)"|  [%s]  |  [%d]  |  [%s]  |"
 #define DB_LOG_PATH   (const char *)"logs/security.log"
 #define SECU_LOG_PATH (const char *)"logs/security.log"

@@ -9,7 +9,7 @@ inline void get_time(char *datetime)
 {
   time_t current_time;
   time(&current_time);
-  strftime(datetime, DATETIME_MAX_LENGTH, DATETIME_FORMAT, localtime(&current_time));
+  strftime(datetime, DATETIME_MAX_LEN, DATETIME_FORMAT, localtime(&current_time));
 }
 
 /**
@@ -47,7 +47,7 @@ static inline errcode_t __logw(FILE *logf, const char *log_path, errcode_t __err
  */
 inline errcode_t log_write(const char *log_path, errcode_t __err, const char *__msg)
 {
-  char datetime[DATETIME_MAX_LENGTH];
+  char datetime[DATETIME_MAX_LEN];
   get_time(datetime);
   return __logw(NULL, log_path, __err, __msg, datetime);
 }
@@ -66,7 +66,7 @@ inline errcode_t get_pass(char *pass)
     return LOG(SECU_LOG_PATH, E_GETPASS, E_GETPASS_M);
 
   // Remove trailing newline character
-  pass[strcspn(pass, "\n")] = '\0';
+  pass[strcspn(pass, "\n")] = 0x0;
 
   return __SUCCESS__;
 }
