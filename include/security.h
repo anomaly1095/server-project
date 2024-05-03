@@ -12,7 +12,7 @@
 #define SECRET_SALT_SIZE    32U
 
 #define ENCRYPTED_KEY_SIZE crypto_secretbox_KEYBYTES +\
-crypto_secretbox_MACBYTES
+crypto_box_SEALBYTES
 
 
 #define PATH_PHYSKEY    "/media/amnesia2/PKEY/keys/auth_init.bin"  // path to the key for first step authentication
@@ -49,5 +49,29 @@ inline errcode_t secu_asymmetric_encrypt(const uint8_t *pk, uint8_t *c, const vo
 /// @param c cipher to decrypt
 /// @param clen length of cipher to decrypt
 errcode_t secu_asymmetric_decrypt(const uint8_t *pk, const uint8_t *sk, void *m, const uint8_t *c, size_t clen);
+
+/**
+ * @brief Encrypts a message 'm' of length 'mlen' using the symmetric key 'key' obtained from the client connection
+ *  and stores the cipher in 'c'. This function does not use a nonce.
+ * 
+ * @param key Symmetric key obtained from the client connection.
+ * @param c Buffer to contain the cipher.
+ * @param m Message to encrypt.
+ * @param mlen Length of the message to encrypt.
+ * @return Error code indicating the success or failure of the encryption process.
+ */
+errcode_t secu_symmetric_encrypt(const uint8_t *key, uint8_t *c, const void *m, size_t mlen);
+
+/**
+ * @brief Decrypts a cipher 'c' of length 'clen' using the symmetric key 'key', storing the result in 'm'. This function does not use a nonce.
+ * 
+ * @param key Symmetric key specific to this connection.
+ * @param m Buffer to store the decrypted message.
+ * @param c Cipher to decrypt.
+ * @param clen Length of the cipher to decrypt.
+ * @return Error code indicating the success or failure of the decryption process.
+ */
+errcode_t secu_symmetric_decrypt(const uint8_t *key, void *m, const uint8_t *c, size_t clen);
+
 
 #endif

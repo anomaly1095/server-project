@@ -9,9 +9,6 @@
 #define DATA_AVAILABLE      1
 #define DATA_UNAVAILABLE    0
 
-#define PING_HELLO          (unsigned char*)"Hello"
-#define PING_HELLO_LEN     (size_t)__builtin_strlen(PING_HELLO)
-
 
 //===============================================
 //              ----MODES----
@@ -158,17 +155,6 @@ errcode_t net_connection_handler(thread_arg_t *thread_arg);
  */
 void *net_communication_handler(void *args);
 
-/**
- * @brief Sends the public key to the client.
- * 
- * This function retrieves the public key from the database and sends it to the client identified by the thread and client indices.
- * 
- * @param thread_arg Pointer to the thread_arg_t structure.
- * @param thread_index Index of the thread.
- * @param client_index Index of the client.
- * @return __SUCCESS__ if the public key is sent successfully, or an error code if sending fails or retrieving the public key from the database fails.
- */
-errcode_t net_send_pk(thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
 
 
 #endif

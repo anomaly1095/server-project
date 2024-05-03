@@ -65,7 +65,8 @@ typedef int32_t errcode_t;
 #define E_ASYMM_ENCRYPT_M "Security Error during encryption with public key"
 #define E_ASYMM_DECRYPT_M "Security Error during decryption with key pair"
 #define E_SEND_PK_M     "Error occured during sending of public key to client"
-
+#define E_SYMM_ENCRYPT_M "Error encrypting symmetric key"
+#define E_SYMM_DECRYPT_M "Error decrypting symmetric key"
 //=========================================================================
 // database ERRORS: 200->300
 // many errnos will be defined in libmysql
@@ -132,11 +133,15 @@ typedef int32_t errcode_t;
 #define E_ALTER_CO_FLAG     410
 #define E_PHASE2_AUTH       411
 #define E_SEND_PING         412
+#define E_MULTIPLE_VALS     413
+#define E_INVALID_PING      414
 
-#define ENOMEM_M           "WARNING kernel out of memory"
-#define EGET_HOSTBYNAME_M   "Error during server DNS lookup"
-#define E_INVAL_ADDRLEN_M   "Invalid address len resulting of DNS resolving"
-#define E_UNSUPPORTED_AF_M  "Warning Unsupported address family in new connection"
+
+
+#define ENOMEM_M            "WARNING kernel out of memory"
+#define EGET_HOSTBYNAME_M   "ERROR during server DNS lookup"
+#define E_INVAL_ADDRLEN_M   "ERROR Invalid address len resulting of DNS resolving"
+#define E_UNSUPPORTED_AF_M  "WARNING Unsupported address family in new connection"
 #define MAX_FDS_IN_PROGRAM_M"WARNING max_file descriptors reached for system"
 #define ECONNREFUSED_M1     "ERROR in recv() A remote host refused to allow the network connection"
 #define EFAULT_M1           "ERROR in recv() The receive buffer pointer point outside the \
@@ -151,7 +156,7 @@ protocol and has not been connected"
 #define EFAULT_M2           "ERROR in send() An invalid user space address was specified for an argument."
 #define EBADF_M2            "ERROR in send() Invalid file descriptor."
 #define ECONNRESET_M2       "ERROR in send() Connection was reset by peer."
-#define ENOBUFS_M2          "The output queue for a network interface was full. This generally \
+#define ENOBUFS_M2          "ERROR The output queue for a network interface was full. This generally \
 indicates that the interface has stopped sending, but maybe  caused  by transient congestion"
 #define ENOTCONN_M2         "ERROR in send() The socket is associated with a connection-oriented \
 protocol and has not been connected"
@@ -161,8 +166,13 @@ protocol and has not been connected"
 #define EINVAL_M2           "ERROR in send() invalid argument"
 #define E_ALTER_CO_FLAG_M   "ERROR when altering client authentication status in database"
 #define E_PHASE2_AUTH_M     "ERROR could be CRITICAL in net_recv_key()"
-#define E_SEND_PING_M       "Error pinging client"
+#define E_SEND_PING_M       "ERROR pinging client"
+#define E_MULTIPLE_VALS_M   "ERROR Query function returned multiple rows when it should be only one"
+#define E_INVALID_PING_M    "ERROR ping that was received is different that the one expected"
+
+
 
 //=========================================================================
+
 
 #endif

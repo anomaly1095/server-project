@@ -82,31 +82,40 @@ static inline errcode_t req_pri_run_request(const void *req, uint32_t reqcode, t
   switch (reqcode)
   {
     case REQ_SEND_ASYMKEY: 
+      // Send the public key to the client as a response to REQ_SEND_ASYMKEY request
       net_send_pk(thread_arg, thread_index, client_index);
+      // Free the memory allocated for the request stream
       free(req);
       break;
     case REQ_RECV_K:
+      // Receive and process the symmetric key from the client as a response to REQ_RECV_K request
       net_recv_key(req, thread_arg, thread_index, client_index);
+      // Free the memory allocated for the request stream
       free(req);
       break;
-    case REQ_VALID_SYMKEY:
-      // Add parsing function for REQ_VALID_SYMKEY
+    case REQ_SEND_PING:
+      // Send a ping message to the client as a response to REQ_SEND_PING request
+      net_send_ping(thread_arg, thread_index, client_index, (const void *)PING_HELLO, PING_HELLO_LEN);
+      // Free the memory allocated for the request stream
+      free(req);
+      break;
+    case REQ_RECV_PING:
+      // Receive and process a ping message from the client as a response to REQ_RECV_PING request
+      net_recv_ping(thread_arg, thread_index, client_index, (const void *)PING_HELLO, PING_HELLO_LEN);
+      // Free the memory allocated for the request stream
+      free(req);
       break;
     case REQ_MODIF_SYMKEY:
-      // Add parsing function for REQ_MODIF_SYMKEY
-      break;
-    case 4:
-    case 5:
-    case 6:
-      // Add parsing functions for additional request codes
+      // Currently no implementation for modifying the symmetric key
       break;
     default:
-      // Log an error for undefined request code
+      // Log an error for encountering an undefined request code
       return LOG(REQ_LOG_PATH, EUNDEF_REQ_CODE, EUNDEF_REQ_CODE_M);
   }
   
   return __SUCCESS__;
 }
+
 
 
 

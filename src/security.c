@@ -114,7 +114,6 @@ errcode_t secu_init_keys(MYSQL *db_connect)
 /**
  * @brief Encrypts a message 'm' of length 'mlen' using the public key 'pk' and stores the cipher in 'c'.
  * 
- * This function encrypts the message 'm' using the public key 'pk' and stores the resulting cipher in 'c'.
  * 
  * @param pk Public key.
  * @param c Buffer to contain the cipher.
@@ -133,7 +132,6 @@ inline errcode_t secu_asymmetric_encrypt(const uint8_t *pk, uint8_t *c, const vo
 /**
  * @brief Decrypts a cipher 'c' of length 'clen' using the public key 'pk' and secret key 'sk', storing the result in 'm'.
  * 
- * This function decrypts the cipher 'c' using the public key 'pk' and secret key 'sk', and stores the resulting message in 'm'.
  * 
  * @param pk Public key.
  * @param sk Secret key.
@@ -154,3 +152,38 @@ inline errcode_t secu_asymmetric_decrypt(const uint8_t *pk, const uint8_t *sk, v
 //===========================================================================================================
 //                SECURITY: ENCRYPTION DECRYPTION WITH SYMMETRIC CRYPTO
 //===========================================================================================================
+
+/**
+ * @brief Encrypts a message 'm' of length 'mlen' using the symmetric key 'key' obtained from the client connection
+ *  and stores the cipher in 'c'. This function does not use a nonce.
+ * 
+ * @param key Symmetric key obtained from the client connection.
+ * @param c Buffer to contain the cipher.
+ * @param m Message to encrypt.
+ * @param mlen Length of the message to encrypt.
+ * @return Error code indicating the success or failure of the encryption process.
+ */
+inline errcode_t secu_symmetric_encrypt(const uint8_t *key, uint8_t *c, const void *m, size_t mlen)
+{
+  const uint8_t *__m = (const uint8_t *)m;
+  if (crypto_secretbox_easy(c, __m, mlen, NULL, key))
+    return LOG(SECU_LOG_PATH, E_SYMM_ENCRYPT, E_SYMM_ENCRYPT_M);
+  return __SUCCESS__;
+}
+
+/**
+ * @brief Decrypts a cipher 'c' of length 'clen' using the symmetric key 'key', storing the result in 'm'. This function does not use a nonce.
+ * 
+ * @param key Symmetric key specific to this connection.
+ * @param m Buffer to store the decrypted message.
+ * @param c Cipher to decrypt.
+ * @param clen Length of the cipher to decrypt.
+ * @return Error code indicating the success or failure of the decryption process.
+ */
+inline errcode_t secu_symmetric_decrypt(const uint8_t *key, void *m, const uint8_t *c, size_t clen)
+{
+  uint8_t *__m = (uint8_t *)m;
+  if (crypto_secretbox_open_easy(__m, c, clen, NULL, key))
+    return LOG(SECU_LOG_PATH, E_SYMM_DECRYPT, E_SYMM_DECRYPT_M);
+  return __SUCCESS__;
+}
