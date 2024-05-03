@@ -123,9 +123,9 @@ typedef struct Connection co_t;
 /// @brief the client has sent the encrypted key
 #define CO_FLAG_SENT_KEY    0b00000010 
 /// @brief the client has received the encrypted ping
-#define CO_FLAG_RECVD_PING  0b00000100 
+#define CO_FLAG_SENT_PING  0b00000100 
 /// @brief the client has responded with the correct ping
-#define CO_FLAG_SENT_RESP   0b00001000 
+#define CO_FLAG_RECV_PING   0b00001000 
 /// @brief the client is fully authenticated
 #define CO_FLAG_AUTH        0b00010000 
 /// @brief the client has disconnected

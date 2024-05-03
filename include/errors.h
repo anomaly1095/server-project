@@ -131,6 +131,7 @@ typedef int32_t errcode_t;
 #define E_UNSUPPORTED_AF    409
 #define E_ALTER_CO_FLAG     410
 #define E_PHASE2_AUTH       411
+#define E_SEND_PING         412
 
 #define ENOMEM_M           "WARNING kernel out of memory"
 #define EGET_HOSTBYNAME_M   "Error during server DNS lookup"
@@ -160,7 +161,7 @@ protocol and has not been connected"
 #define EINVAL_M2           "ERROR in send() invalid argument"
 #define E_ALTER_CO_FLAG_M   "ERROR when altering client authentication status in database"
 #define E_PHASE2_AUTH_M     "ERROR could be CRITICAL in net_recv_key()"
-
+#define E_SEND_PING_M       "Error pinging client"
 
 //=========================================================================
 
