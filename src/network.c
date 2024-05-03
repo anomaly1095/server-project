@@ -189,7 +189,8 @@ static inline errcode_t net_handle_poll_err(int __err)
 {
   LOG(NET_LOG_PATH, __err, strerror(__err)); // Log the error
   
-  switch (__err) {
+  switch (__err)
+  {
     case EFAULT:
     case EINVAL:
       // Exit if there's a fatal error related to the arguments
@@ -381,10 +382,11 @@ errcode_t net_connection_handler(thread_arg_t *thread_arg)
 
 
 /**
- * @brief Disconnect client because recv returned 0 (close fd and update file descriptor array).
+ * @brief Disconnects a client due to recv() returning 0 (indicating closed connection).
  * 
- * This function disconnects a client because the recv() syscall returned 0, indicating that the client has closed the connection.
- * It closes the file descriptor associated with the client and updates the file descriptor array accordingly.
+ * This function handles the disconnection of a client when the recv() syscall returns 0, indicating that the client has closed the connection.
+ * It closes the file descriptor associated with the client, updates the connection authentication status and file descriptor in the database,
+ * and updates the file descriptor array accordingly.
  * 
  * @param thread_arg Pointer to a thread_arg_t structure containing thread-specific information.
  * @param thread_index Index of the thread in the thread pool.
@@ -392,32 +394,35 @@ errcode_t net_connection_handler(thread_arg_t *thread_arg)
  */
 static void cli_dc(thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
-  size_t last_index = client_index;
+  size_t last_index = client_index; // Initialize the index of the last active client as the current client index
   
-  // Find the last active client file descriptor
+  // Find the index of the last active client file descriptor
   while (thread_arg->total_cli_fds[thread_index][last_index + 1].fd != -1)
     last_index++;
   
   // Close the client file descriptor
   close(thread_arg->total_cli_fds[thread_index][client_index].fd);
   
-  // Update the connection authentication status
+  // Update the connection authentication status in the database to indicate disconnection
   pthread_mutex_lock(&mutex_connection_auth_status);
   if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_DISCO, thread_arg->total_cli_fds[thread_index][client_index].fd))
-    LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M);
+    LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M); // Log error if database update fails
   pthread_mutex_unlock(&mutex_connection_auth_status);
 
-  // Update the connection file descriptor to -1
+  // Update the connection file descriptor in the database to -1 to mark disconnection
   pthread_mutex_lock(&mutex_connection_fd);
   if (db_co_up_fd_by_fd(thread_arg->db_connect, FD_DISCO, thread_arg->total_cli_fds[thread_index][client_index].fd))
-    LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M);
+    LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M); // Log error if database update fails
   pthread_mutex_unlock(&mutex_connection_fd);
 
-  // Move the last active client file descriptor to the position of the disconnected client
+  // Swap the disconnected client file descriptor with the last active client file descriptor in the array and with it it's details
   thread_arg->total_cli_fds[thread_index][client_index].fd = thread_arg->total_cli_fds[thread_index][last_index].fd;
-  thread_arg->total_cli_fds[thread_index][last_index].fd = -1;
-
+  thread_arg->total_cli_fds[thread_index][client_index].events = thread_arg->total_cli_fds[thread_index][last_index].events;
+  thread_arg->total_cli_fds[thread_index][client_index].revents = thread_arg->total_cli_fds[thread_index][last_index].revents;
+  thread_arg->total_cli_fds[thread_index][last_index].fd = -1; // Set the last active client file descriptor to -1 to mark it as inactive
+  thread_arg->total_cli_fds[thread_index][last_index].fd |= POLLPRI; // Set POLLPRI event for the last active client file descriptor (just to make sure that the next cli authenticates)
 }
+
 
 
 
@@ -675,16 +680,16 @@ static inline void net_check_clifds(thread_arg_t *thread_arg, size_t thread_inde
     // Check if data is available on the client's receive buffer
     if (net_data_available(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index, buffer))
     {
-      if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLPRI)
+      if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLPRI) // client needs to authenticate
       {
         // Call request module to handle priority requests (e.g., authentication)
-        if (req_pri_request_handle(buffer, thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index))
+        if (req_pri_handle(buffer, thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index))
           return __FAILURE__;
       }
-      else if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLIN)
+      else if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLIN) // client authenticated can perform I/O
       {
         // Call request module to parse and handle regular data reception
-        if (req_request_handle(buffer, thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index))
+        if (req_handle(buffer, thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index))
           return __FAILURE__;
       }
     }
@@ -1035,7 +1040,7 @@ errcode_t net_recv_auth_ping(const void *req, thread_arg_t *thread_arg, size_t t
   pthread_mutex_unlock(&mutex_connection_auth_status);
 
   // change .events to pollin as the client is fully authenticated
-  thread_arg->total_cli_fds[thread_index][client_index].events &= POLLIN;
+  thread_arg->total_cli_fds[thread_index][client_index].events != POLLPRI;
 
   return __SUCCESS__;
 }

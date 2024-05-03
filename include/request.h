@@ -47,7 +47,7 @@
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the request is handled successfully, EREQ_FAIL if an error occurs.
  */
-errcode_t req_request_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
+errcode_t req_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
 
 /**
  * @brief Handles priority data for client authentication.
@@ -60,7 +60,7 @@ errcode_t req_request_handle(const void *req, thread_arg_t *thread_arg, size_t t
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the priority data is handled successfully, EREQ_FAIL if an error occurs.
  */
-errcode_t req_pri_request_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
+errcode_t req_pri_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index);
 
 
 /**

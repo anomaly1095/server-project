@@ -16,7 +16,7 @@
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the request is processed successfully, or an error code if an undefined request code is encountered.
  */
-static inline errcode_t req_run_request(const void *req, uint32_t reqcode, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+static inline errcode_t req_run(const void *req, uint32_t reqcode, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   switch (reqcode)
   {
@@ -48,13 +48,13 @@ static inline errcode_t req_run_request(const void *req, uint32_t reqcode, threa
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the request is handled successfully, EREQ_FAIL if an error occurs.
  */
-errcode_t req_request_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+errcode_t req_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   uint32_t reqcode;
   memcpy((void*)&reqcode, req, 4); // Get request code
   
   // Run the request
-  if (req_run_request(req, reqcode, thread_arg, thread_index, client_index))
+  if (req_run(req, reqcode, thread_arg, thread_index, client_index))
     return EREQ_FAIL;
   
   return __SUCCESS__;
@@ -77,7 +77,7 @@ errcode_t req_request_handle(const void *req, thread_arg_t *thread_arg, size_t t
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the request is processed successfully, or an error code if an undefined request code is encountered.
  */
-static inline errcode_t req_pri_run_request(const void *req, uint32_t reqcode, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+static inline errcode_t req_pri_run(const void *req, uint32_t reqcode, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   switch (reqcode)
   {
@@ -130,13 +130,13 @@ static inline errcode_t req_pri_run_request(const void *req, uint32_t reqcode, t
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the priority data is handled successfully, EREQ_FAIL if an error occurs.
  */
-errcode_t req_pri_request_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+errcode_t req_pri_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   uint32_t reqcode;
   memcpy((void*)&reqcode, req, 4); // Get request code
   
   // Run the request
-  if (req_pri_run_request(req, reqcode, thread_arg, thread_index, client_index))
+  if (req_pri_run(req, reqcode, thread_arg, thread_index, client_index))
     return EREQ_FAIL;
   
   return __SUCCESS__;

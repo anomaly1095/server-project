@@ -614,7 +614,7 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
   i = 0;
   while (!mysql_stmt_fetch(stmt)){
     db_co_res_cpy(co[i], result);
-    bzero((void*)result[CO_NROWS-1].buffer, crypto_secretbox_KEYBYTES));
+    bzero((void*)result[CO_NROWS-1].buffer, crypto_secretbox_KEYBYTES);
     ++i;
   }
 
@@ -813,7 +813,7 @@ errcode_t db_co_sel_all_by_addr(MYSQL *db_connect, co_t **co, size_t *nrow, cons
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND params[2];
-  MYSQL_BIND result[]; // Number of columns in the result set
+  MYSQL_BIND result[CO_NROWS]; // Number of columns in the result set
   size_t i;
 
   if (!(stmt = mysql_stmt_init(db_connect)))
@@ -964,7 +964,7 @@ errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_id)
 /// @param db_connect MYSQL database connection
 /// @param co_fd_new new connection file descriptor
 /// @param co_fd connection file descriptor
-errcode_t db_co_up_fd_by_fd(MYSQL *db_connect, const sockfd_t co_fd_new, sockfd_t co_fd);
+errcode_t db_co_up_fd_by_fd(MYSQL *db_connect, const sockfd_t co_fd_new, sockfd_t co_fd)
 {
   char query[QUERY_CO_UP_FD_BY_FD_LEN + 16 + 16];
   sprintf(query, QUERY_CO_UP_FD_BY_FD, co_fd_new, co_fd);
