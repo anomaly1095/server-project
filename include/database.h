@@ -29,7 +29,7 @@ typedef struct DBCreds
     char db[DB_SIZE_DB];
     uint32_t port;
 }db_creds_t;
-
+#define DB_DEFAULT_PORT 3306U
 /// @brief Initializee the database
 /// @param db_connect MYSQL db connection
 errcode_t db_init(MYSQL **db_connect);
@@ -166,6 +166,18 @@ errcode_t db_co_del_byid(MYSQL *db_connect, const id64_t co_id);
 
 //--------------------
 
+///@brief query to delete from database by fd
+#define QUERY_CO_DEL_BYFD   "DELETE FROM Connection WHERE fd = %d;"
+#define QUERY_CO_DEL_BYFD_LEN \
+(__builtin_strlen(QUERY_CO_DEL_BYFD))
+
+/// @brief function to delete connection from database by id
+/// @param db_connect MYSQL database connection
+/// @param co_fd connection fd
+errcode_t db_co_del_byfd(MYSQL *db_connect, const sockfd_t co_fd);
+
+//--------------------
+
 ///@brief query to delete from database by ip address and port num
 #define QUERY_CO_DEL_BYADDR "DELETE FROM Connection WHERE co_ip_addr = ? AND co_port = ?;"
 #define QUERY_CO_DEL_BYADDR_LEN \
@@ -264,6 +276,7 @@ errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
 errcode_t db_co_sel_all_by_addr(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr, const in_port_t co_port);
 
 //--------------------
+
 
 ///@brief query to get all data with ip address
 #define QUERY_CO_SEL_KEY_BY_ADDR "SELECT co_key FROM Connection WHERE co_ip_addr = ? AND co_port = ?;"

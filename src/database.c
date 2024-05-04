@@ -5,66 +5,85 @@
 //===============================================
 
 
-/// @brief get database hostname from admin
-static inline errcode_t db_get_auth_host(char *host)
-{
-  printf("db hostname: ");
-  if (!fgets(host, DB_SIZE_HOST-1, stdin))
-    return __FAILURE__;
-  host[strlen(host) - 1] = 0x0; // removing \n
-  return __SUCCESS__;
+/**
+ * @brief Prompt user for the database hostname.
+ * 
+ * @param host Buffer to store the hostname.
+ * @return __SUCCESS__ on success, __FAILURE__ on failure.
+ */
+static inline errcode_t db_get_auth_host(char *host) {
+    printf("Enter database hostname: ");
+    if (!fgets(host, DB_SIZE_HOST, stdin))
+        return __FAILURE__;
+    host[strcspn(host, "\n")] = 0X0; // Remove trailing newline
+    return __SUCCESS__;
 }
 
-
-/// @brief get database username from admin
-static inline errcode_t db_get_auth_user(char *user)
-{
-  printf("db username: ");
-  if (!fgets(user, DB_SIZE_USER-1, stdin))
-    return __FAILURE__;
-  user[strlen(user) - 1] = 0x0; // removing \n
-  return __SUCCESS__;
+/**
+ * @brief Prompt user for the database username.
+ * 
+ * @param user Buffer to store the username.
+ * @return __SUCCESS__ on success, __FAILURE__ on failure.
+ */
+static inline errcode_t db_get_auth_user(char *user) {
+    printf("Enter database username: ");
+    if (!fgets(user, DB_SIZE_USER, stdin))
+        return __FAILURE__;
+    user[strcspn(user, "\n")] = 0x0; // Remove trailing newline
+    return __SUCCESS__;
 }
 
-
-/// @brief get database password from admin
-static inline errcode_t db_get_auth_pass(char *passwd)
-{
-  printf("db password: ");
-  char *input = getpass("");
-  strncpy(passwd, input, DB_SIZE_PASS - 1);
-  passwd[strlen(passwd) - 1] = 0x0; // removing \n
-  return __SUCCESS__;
+/**
+ * @brief Prompt user for the database password.
+ * 
+ * @param passwd Buffer to store the password.
+ * @return __SUCCESS__ on success, __FAILURE__ on failure.
+ */
+static inline errcode_t db_get_auth_pass(char *passwd) {
+    printf("Enter database password: ");
+    char *input = getpass("");
+    strncpy(passwd, input, DB_SIZE_PASS - 1);
+    passwd[DB_SIZE_PASS - 1] = 0x0; // Ensure null-termination
+    return __SUCCESS__;
 }
 
-
-/// @brief get database name from admin
-static inline errcode_t db_get_auth_db(char *db)
-{
-  printf("db name: ");
-  if (!fgets(db, DB_SIZE_DB-1, stdin))
-    return __FAILURE__;
-  db[strlen(db) - 1] = 0x0; // removing \n
-  return __SUCCESS__;
+/**
+ * @brief Prompt user for the database name.
+ * 
+ * @param db Buffer to store the database name.
+ * @return __SUCCESS__ on success, __FAILURE__ on failure.
+ */
+static inline errcode_t db_get_auth_db(char *db) {
+    printf("Enter database name: ");
+    if (!fgets(db, DB_SIZE_DB, stdin))
+        return __FAILURE__;
+    db[strcspn(db, "\n")] = 0x0; // Remove trailing newline
+    return __SUCCESS__;
 }
 
-
-/// @brief perform realtime authentication from admin (step 2 authentication)
-/// @param creds credentials struct containing (username, password, host...)
-static inline errcode_t db_get_auth(db_creds_t *creds)
-{
-  memset((void*)creds, 0x0, sizeof creds);
-  if (db_get_auth_host(creds->host))
-    return LOG(DB_LOG_PATH, EDB_W_HOST, EDB_W_HOST_M);
-  if (db_get_auth_user(creds->user))
-    return LOG(DB_LOG_PATH, EDB_W_USER, EDB_W_USER_M);
-  if (db_get_auth_pass(creds->passwd))
-    return LOG(DB_LOG_PATH, EDB_W_PASSWD, EDB_W_PASSWD_M);
-  if (db_get_auth_db(creds->db))
-    return LOG(DB_LOG_PATH, EDB_W_DB, EDB_W_DB_M);
-  creds->port = 3306;
-  return __SUCCESS__;
+/**
+ * @brief Perform realtime authentication from admin.
+ * 
+ * This function prompts the user for database credentials and populates
+ * the db_creds_t structure with the provided values.
+ * 
+ * @param creds Pointer to db_creds_t structure to store the credentials.
+ * @return __SUCCESS__ on success, appropriate error code on failure.
+ */
+inline errcode_t db_get_auth(db_creds_t *creds) {
+    memset(creds, 0, sizeof(*creds));
+    if (db_get_auth_host(creds->host))
+        return LOG(DB_LOG_PATH, EDB_W_HOST, EDB_W_HOST_M);
+    if (db_get_auth_user(creds->user))
+        return LOG(DB_LOG_PATH, EDB_W_USER, EDB_W_USER_M);
+    if (db_get_auth_pass(creds->passwd))
+        return LOG(DB_LOG_PATH, EDB_W_PASSWD, EDB_W_PASSWD_M);
+    if (db_get_auth_db(creds->db))
+        return LOG(DB_LOG_PATH, EDB_W_DB, EDB_W_DB_M);
+    creds->port = DB_DEFAULT_PORT; // Assuming DEFAULT_DB_PORT is defined elsewhere
+    return __SUCCESS__;
 }
+
 
 
 
@@ -72,22 +91,32 @@ static inline errcode_t db_get_auth(db_creds_t *creds)
 //            INITIALISATION
 //===============================================
 
-/// @brief connects to the database
-/// @param db_connect MYSQL db connection
-errcode_t db_init(MYSQL **db_connect)
-{
-  db_creds_t creds;
-  // initialize db
-  if ( !(*db_connect = mysql_init(NULL)))
-    return LOG(DB_LOG_PATH, EDB_CO_INIT, EDB_CO_INIT_M);
-  // get admin creds
-  if (db_get_auth(&creds))
-    return EDB_AUTH;
-  // connect to db
-  if (!mysql_real_connect(*db_connect, creds.host, creds.user, creds.passwd, creds.db, creds.port, NULL, 0x0))
-    return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+/**
+ * @brief Connect to the database using provided credentials.
+ * 
+ * This function initializes the database connection, retrieves database credentials,
+ * and connects to the database using the provided credentials.
+ * 
+ * @param db_connect Pointer to a MYSQL pointer for storing the database connection.
+ * @return __SUCCESS__ on success, appropriate error code on failure.
+ */
+errcode_t db_init(MYSQL **db_connect) {
+    db_creds_t creds;
+    
+    // Initialize database connection
+    *db_connect = mysql_init(NULL);
+    if (!*db_connect)
+        return LOG(DB_LOG_PATH, EDB_CO_INIT, EDB_CO_INIT_M);
 
-  return __SUCCESS__;
+    // Retrieve database credentials
+    if (db_get_auth(&creds))
+        return EDB_AUTH;
+
+    // Connect to the database
+    if (!mysql_real_connect(*db_connect, creds.host, creds.user, creds.passwd, creds.db, creds.port, NULL, 0))
+        return LOG(DB_LOG_PATH, mysql_errno(*db_connect), mysql_error(*db_connect));
+
+    return __SUCCESS__;
 }
 
 
@@ -96,216 +125,289 @@ errcode_t db_init(MYSQL **db_connect)
 //===========================================================================================================
 
 
-
-/// @brief Fill the parameter values for pk and sk
-/// @param params query parameters
+/**
+ * @brief Fill the parameter values for pk and sk.
+ * 
+ * This function initializes the parameters for the public key (pk) and 
+ * secret key (sk) to be inserted into the database.
+ * 
+ * @param params Query parameters array.
+ * @param pk Public key buffer.
+ * @param sk Secret key buffer.
+ */
 static inline void fill_params_KEY_INSERT(MYSQL_BIND *params, uint8_t *pk, uint8_t *sk)
 {
-  params[0].buffer_type = MYSQL_TYPE_BLOB;
-  params[0].buffer = pk;
-  params[0].buffer_length = sizeof pk;
+    // Parameter for public key (pk)
+    params[0].buffer_type = MYSQL_TYPE_BLOB;
+    params[0].buffer = pk;
+    params[0].buffer_length = sizeof pk;
 
-  params[1].buffer_type = MYSQL_TYPE_BLOB;
-  params[1].buffer = sk;
-  params[1].buffer_length = sizeof sk;
+    // Parameter for secret key (sk)
+    params[1].buffer_type = MYSQL_TYPE_BLOB;
+    params[1].buffer = sk;
+    params[1].buffer_length = sizeof sk;
 }
 
-/// @brief writing the keys to the database
-/// @param pk public key
-/// @param sk secure key
-/// @param db_connect MYSQL database connection
+/**
+ * @brief Write the keys to the database.
+ * 
+ * This function writes the public key (pk) and secret key (sk) to the database.
+ * 
+ * @param pk Public key.
+ * @param sk Secret key.
+ * @param db_connect MYSQL database connection.
+ * @return Error code indicating success or failure.
+ */
 static errcode_t secu_key_save(uint8_t *pk, uint8_t *sk, MYSQL *db_connect)
 {
-  MYSQL_STMT *stmt; // statement handle
-  MYSQL_BIND params[2]; // Array to hold parameter information (pk, sk)
-  bzero((void*)params, sizeof params); // Initialize the param structs
+    MYSQL_STMT *stmt = NULL; // Statement handle
+    MYSQL_BIND params[2];    // Array to hold parameter information (pk, sk)
+    bzero((void *)params, sizeof(params)); // Initialize the param structs
 
-  // Initialize a statement handle
-  if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    // Initialize a statement handle
+    if (!(stmt = mysql_stmt_init(db_connect)))
+        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-  // Prepare the statement with the INSERT query
-  if (mysql_stmt_prepare(stmt, QUERY_KEY_INSERT, QUERY_KEY_INSERT_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    // Prepare the statement with the INSERT query
+    if (mysql_stmt_prepare(stmt, QUERY_KEY_INSERT, QUERY_KEY_INSERT_LEN))
+        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-  // Fill the parameter values for pk and sk
-  fill_params_KEY_INSERT(params, pk, sk);
+    // Fill the parameter values for pk and sk
+    fill_params_KEY_INSERT(params, pk, sk);
 
-  // Bind the parameters to the statement
-  if (mysql_stmt_bind_param(stmt, params))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    // Bind the parameters to the statement
+    if (mysql_stmt_bind_param(stmt, params))
+        goto cleanup;
 
-  // Execute the statement
-  if (!mysql_stmt_execute(stmt))
-    goto cleanup;
+    // Execute the statement
+    if (mysql_stmt_execute(stmt))
+        goto cleanup;
 
-  // Close the statement handle
-  mysql_stmt_close(stmt);
-  return __SUCCESS__;
-  
+    // Close the statement handle
+    mysql_stmt_close(stmt);
+    return __SUCCESS__;
+
 cleanup:
-  mysql_stmt_close(stmt);
-  return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    mysql_stmt_close(stmt);
+    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
-/// @brief Fill the parameter values for pk
-/// @param result query results
+/**
+ * @brief Fill the parameter values for pk.
+ * 
+ * This function initializes the parameter for the public key (pk) retrieved from the database query result.
+ * 
+ * @param result Query results array.
+ * @param pk Public key buffer.
+ */
 static inline void fill_result_KEY_SELECT_PK(MYSQL_BIND *result, uint8_t *pk)
 {
-  result->buffer_type = MYSQL_TYPE_BLOB;
-  result->buffer = pk;
-  result->buffer_length = crypto_box_PUBLICKEYBYTES;
+    // Parameter for public key (pk)
+    result->buffer_type = MYSQL_TYPE_BLOB;
+    result->buffer = pk;
+    result->buffer_length = crypto_box_PUBLICKEYBYTES;
 }
 
-/// @brief get public key from database
-/// @param db_connect MYSQL db connection
-/// @param pk public key
+/**
+ * @brief Retrieve the public key from the database.
+ * 
+ * This function retrieves the public key (pk) from the database.
+ * 
+ * @param db_connect MYSQL database connection.
+ * @param pk Public key buffer to store the retrieved key.
+ * @return Error code indicating success or failure.
+ */
 errcode_t db_get_pk(MYSQL *db_connect, uint8_t *pk)
 {
-  MYSQL_STMT *stmt;
-  MYSQL_BIND result;
-  bzero((void*)&result, sizeof result); // Initialize the result structure
+    MYSQL_STMT *stmt = NULL;
+    MYSQL_BIND result;
+    bzero((void *)&result, sizeof(result)); // Initialize the result structure
 
+    // Initialize the statement handle
+    if (!(stmt = mysql_stmt_init(db_connect)))
+        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-  // initialize the statement
-  if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-  // prepare the statement
-  if (mysql_stmt_prepare(stmt, QUERY_SELECT_PK, QUERY_SELECT_PK_LEN) != 0)
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-  
-  // Fill the parameter values for pk and sk
-  fill_result_KEY_SELECT_PK(&result, pk);
+    // Prepare the statement
+    if (mysql_stmt_prepare(stmt, QUERY_SELECT_PK, QUERY_SELECT_PK_LEN) != 0)
+        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-  if (mysql_stmt_bind_result(stmt, &result))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    // Fill the parameter values for pk
+    fill_result_KEY_SELECT_PK(&result, pk);
 
-  // Execute the statement
-  if (!mysql_stmt_execute(stmt))
-    goto cleanup;
+    // Bind the result parameter to the statement
+    if (mysql_stmt_bind_result(stmt, &result))
+        return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-  // Fetch the result
-  if (!mysql_stmt_fetch(stmt))
-    goto cleanup;
+    // Execute the statement
+    if (!mysql_stmt_execute(stmt))
+        goto cleanup;
 
-  mysql_stmt_close(stmt);
-  return __SUCCESS__;
+    // Fetch the result
+    if (!mysql_stmt_fetch(stmt))
+        goto cleanup;
+
+    // Close the statement handle
+    mysql_stmt_close(stmt);
+    return __SUCCESS__;
+
 cleanup:
-  mysql_stmt_close(stmt);
-  return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    mysql_stmt_close(stmt);
+    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
-/// @brief Fill the parameter values for sk 
-/// @param result query results
+/**
+ * @brief Fill the parameter values for sk.
+ * 
+ * This function initializes the parameter for the secret key (sk) retrieved from the database query result.
+ * 
+ * @param result Query results array.
+ * @param sk Secret key buffer.
+ */
 static inline void fill_result_KEY_SELECT_SK(MYSQL_BIND *result, uint8_t *sk)
 {
-  result->buffer_type = MYSQL_TYPE_BLOB;
-  result->buffer = sk;
-  result->buffer_length = crypto_box_SECRETKEYBYTES;
+    // Parameter for secret key (sk)
+    result->buffer_type = MYSQL_TYPE_BLOB;
+    result->buffer = sk;
+    result->buffer_length = crypto_box_SECRETKEYBYTES;
 }
 
-/// @brief get secret key from database
-/// @param db_connect MYSQL db connection
-/// @param pk secret key
+/**
+ * @brief Retrieve the secret key from the database.
+ * 
+ * This function retrieves the secret key (sk) from the database.
+ * 
+ * @param db_connect MYSQL database connection.
+ * @param sk Secret key buffer to store the retrieved key.
+ * @return Error code indicating success or failure.
+ */
 errcode_t db_get_sk(MYSQL *db_connect, uint8_t *sk)
 {
-  MYSQL_STMT *stmt;
-  MYSQL_BIND result;
-  bzero((void*)&result, sizeof result); // Initialize the result structure
+    MYSQL_STMT *stmt = NULL;
+    MYSQL_BIND result;
+    bzero((void *)&result, sizeof(result)); // Initialize the result structure
 
-  // initialize the statement
-  if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-  // prepare the statement
-  if (mysql_stmt_prepare(stmt, QUERY_SELECT_SK, QUERY_SELECT_SK_LEN) != 0)
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-  
-  // Fill the parameter values for pk and sk
-  fill_result_KEY_SELECT_SK(&result, sk);
+    // Initialize the statement handle
+    if (!(stmt = mysql_stmt_init(db_connect)))
+        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-  if (mysql_stmt_bind_result(stmt, &result))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    // Prepare the statement
+    if (mysql_stmt_prepare(stmt, QUERY_SELECT_SK, QUERY_SELECT_SK_LEN) != 0)
+        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-  // Execute the statement
-  if (!mysql_stmt_execute(stmt))
-    goto cleanup;
+    // Fill the parameter values for sk
+    fill_result_KEY_SELECT_SK(&result, sk);
 
-  // Fetch the result
-  if (!mysql_stmt_fetch(stmt))
-    goto cleanup;
+    // Bind the result parameter to the statement
+    if (mysql_stmt_bind_result(stmt, &result))
+        return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-  mysql_stmt_close(stmt);
-  return __SUCCESS__;
+    // Execute the statement
+    if (!mysql_stmt_execute(stmt))
+        goto cleanup;
+
+    // Fetch the result
+    if (!mysql_stmt_fetch(stmt))
+        goto cleanup;
+
+    // Close the statement handle
+    mysql_stmt_close(stmt);
+    return __SUCCESS__;
 
 cleanup:
-  mysql_stmt_close(stmt);
-  return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    mysql_stmt_close(stmt);
+    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
-/// @brief Fill the parameter values for pk and sk
-/// @param result query results
+/**
+ * @brief Fill the parameter values for pk and sk.
+ * 
+ * This function initializes the parameters for the public key (pk) and secret key (sk)
+ * retrieved from the database query result.
+ * 
+ * @param result Query results array.
+ * @param pk Public key buffer.
+ * @param sk Secret key buffer.
+ */
 static inline void fill_result_KEY_SELECT_PK_SK(MYSQL_BIND *result, uint8_t *pk, uint8_t *sk)
 {
-  result[0].buffer_type = MYSQL_TYPE_BLOB;
-  result[0].buffer = pk;
-  result[0].buffer_length = crypto_box_PUBLICKEYBYTES;
+    // Parameter for public key (pk)
+    result[0].buffer_type = MYSQL_TYPE_BLOB;
+    result[0].buffer = pk;
+    result[0].buffer_length = crypto_box_PUBLICKEYBYTES;
   
-  result[1].buffer_type = MYSQL_TYPE_BLOB;
-  result[1].buffer = sk;
-  result[1].buffer_length = crypto_box_SECRETKEYBYTES;
+    // Parameter for secret key (sk)
+    result[1].buffer_type = MYSQL_TYPE_BLOB;
+    result[1].buffer = sk;
+    result[1].buffer_length = crypto_box_SECRETKEYBYTES;
 }
 
-/// @brief get public key & secret key from database
-/// @param db_connect MYSQL db connection
-/// @param pk public key
-/// @param sk secret key
+/**
+ * @brief Retrieve the public key and secret key from the database.
+ * 
+ * This function retrieves both the public key (pk) and secret key (sk) from the database.
+ * 
+ * @param db_connect MYSQL database connection.
+ * @param pk Public key buffer to store the retrieved key.
+ * @param sk Secret key buffer to store the retrieved key.
+ * @return Error code indicating success or failure.
+ */
 errcode_t db_get_pk_sk(MYSQL *db_connect, uint8_t *pk, uint8_t *sk)
 {
-  MYSQL_STMT *stmt;
-  MYSQL_BIND result[2];
-  bzero((void*)result, sizeof result); // Initialize the result structure
+    MYSQL_STMT *stmt = NULL;
+    MYSQL_BIND result[2];
+    bzero((void*)result, sizeof(result)); // Initialize the result structure
 
-  // initialize the statement
-  if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
-  // prepare the statement
-  if (mysql_stmt_prepare(stmt, QUERY_SELECT_PK_SK, QUERY_SELECT_PK_SK_LEN))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    // Initialize the statement handle
+    if (!(stmt = mysql_stmt_init(db_connect)))
+        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+
+    // Prepare the statement
+    if (mysql_stmt_prepare(stmt, QUERY_SELECT_PK_SK, QUERY_SELECT_PK_SK_LEN))
+        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
   
-  // Fill the parameter values for pk and sk
-  fill_result_KEY_SELECT_PK_SK(result, pk, sk);
+    // Fill the parameter values for pk and sk
+    fill_result_KEY_SELECT_PK_SK(result, pk, sk);
 
-  if (mysql_stmt_bind_result(stmt, result))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    // Bind the result parameters to the statement
+    if (mysql_stmt_bind_result(stmt, result))
+        return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-  // Execute the statement
-  if (!mysql_stmt_execute(stmt))
-    goto cleanup;
+    // Execute the statement
+    if (!mysql_stmt_execute(stmt))
+        goto cleanup;
 
-  // Fetch the result
-  if (!mysql_stmt_fetch(stmt))
-    goto cleanup;
+    // Fetch the result
+    if (!mysql_stmt_fetch(stmt))
+        goto cleanup;
 
-  mysql_stmt_close(stmt);
-  return __SUCCESS__;
+    // Close the statement handle
+    mysql_stmt_close(stmt);
+    return __SUCCESS__;
 
 cleanup:
-  mysql_stmt_close(stmt);
-  return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+    mysql_stmt_close(stmt);
+    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
-/// @brief deletes current key pair present in the db KeyPairs table
-/// @param db_connect MYSQL db connection
+/**
+ * @brief Delete the current key pair present in the database KeyPairs table.
+ * 
+ * This function deletes the current key pair present in the KeyPairs table of the database.
+ * 
+ * @param db_connect MYSQL database connection.
+ * @return Error code indicating success or failure.
+ */
 inline errcode_t secu_key_del(MYSQL *db_connect)
 {
-  if (mysql_query(db_connect, QUERY_KEY_DELETE))
-    return LOG(DB_LOG_PATH, (int32_t)mysql_errno(db_connect), mysql_error(db_connect));
-  return __SUCCESS__;
+    if (mysql_query(db_connect, QUERY_KEY_DELETE))
+        return LOG(DB_LOG_PATH, (int32_t)mysql_errno(db_connect), mysql_error(db_connect));
+    return __SUCCESS__;
 }
+
 
 
 
@@ -315,42 +417,48 @@ inline errcode_t secu_key_del(MYSQL *db_connect)
 
 //---------------------------INSERT
 
-/// @brief fill parameters of the insert connection query
-/// @param params parameters of the statement
-/// @param co_new new connection object 
+/**
+ * @brief Fill the parameters of the insert connection query.
+ * 
+ * This function fills the parameters of the insert connection query with the values 
+ * from the new connection object.
+ * 
+ * @param params Parameters of the statement.
+ * @param co_new New connection object.
+ */
 static inline void fill_params_co_insert(MYSQL_BIND *params, co_t co_new)
 {
-  // FILE DESCRIPTOR
-  params[0].buffer_type = MYSQL_TYPE_LONG;
-  params[0].buffer = &co_new.co_fd;
-  params[0].buffer_length = sizeof co_new.co_fd;
+    // FILE DESCRIPTOR
+    params[0].buffer_type = MYSQL_TYPE_LONG;
+    params[0].buffer = &co_new.co_fd;
+    params[0].buffer_length = sizeof co_new.co_fd;
 
-  // AUTHENTICATION STEP
-  params[1].buffer_type = MYSQL_TYPE_TINY;
-  params[1].buffer = &co_new.co_auth_status;
-  params[1].buffer_length = sizeof co_new.co_auth_status;
+    // AUTHENTICATION STEP
+    params[1].buffer_type = MYSQL_TYPE_TINY;
+    params[1].buffer = &co_new.co_auth_status;
+    params[1].buffer_length = sizeof co_new.co_auth_status;
 
-  // ADDRESS FAMILY
-  params[2].buffer_type = MYSQL_TYPE_SHORT;
-  params[2].buffer = &co_new.co_af;
-  params[2].buffer_length = sizeof co_new.co_af;
+    // ADDRESS FAMILY
+    params[2].buffer_type = MYSQL_TYPE_SHORT;
+    params[2].buffer = &co_new.co_af;
+    params[2].buffer_length = sizeof co_new.co_af;
 
-  // CONNECTION PORT BIG ENDIAN
-  params[3].buffer_type = MYSQL_TYPE_SHORT;
-  params[3].buffer = &co_new.co_port;
-  params[3].buffer_length = sizeof co_new.co_port;
+    // CONNECTION PORT BIG ENDIAN
+    params[3].buffer_type = MYSQL_TYPE_SHORT;
+    params[3].buffer = &co_new.co_port;
+    params[3].buffer_length = sizeof co_new.co_port;
 
-  // CONNECTION IP ADDRESS BIG ENDIAN
-  params[4].buffer_type = MYSQL_TYPE_BLOB;
-  params[4].buffer = co_new.co_ip_addr;
-  params[4].buffer_length = SIZE_IP_ADDR;
+    // CONNECTION IP ADDRESS BIG ENDIAN
+    params[4].buffer_type = MYSQL_TYPE_BLOB;
+    params[4].buffer = co_new.co_ip_addr;
+    params[4].buffer_length = SIZE_IP_ADDR;
 
-  // Connection secret key
-  params[5].buffer_type = MYSQL_TYPE_BLOB;
-  params[5].buffer = co_new.co_key;
-  params[5].buffer_length = crypto_secretbox_KEYBYTES;
-
+    // Connection secret key
+    params[5].buffer_type = MYSQL_TYPE_BLOB;
+    params[5].buffer = co_new.co_key;
+    params[5].buffer_length = crypto_secretbox_KEYBYTES;
 }
+
 
 /// @brief function to insert new connection in database
 /// @param db_connect MYSQL database connection
@@ -390,10 +498,15 @@ cleanup:
 
 //---------------------------DELETE
 
-/// @brief fill parameters of the delete connection by addr query
-/// @param params parameters of the statement
-/// @param co_ip_addr BIG ENDIAN binary ip address
-/// @param co_port BIG ENDIAN port of the connection
+/**
+ * @brief Fill parameters for the delete connection by address query.
+ * 
+ * This function sets up the parameters required for deleting a connection by its address from the database.
+ * 
+ * @param params An array of MySQL parameter bindings.
+ * @param co_ip_addr The BIG ENDIAN binary IP address of the connection.
+ * @param co_port The BIG ENDIAN port of the connection.
+ */
 static inline void fill_params_co_del_byaddr(MYSQL_BIND *params, uint8_t *co_ip_addr, const int16_t co_port)
 {
   // FILE DESCRIPTOR
@@ -403,14 +516,21 @@ static inline void fill_params_co_del_byaddr(MYSQL_BIND *params, uint8_t *co_ip_
 
   // AUTHENTICATION STEP
   params[1].buffer_type = MYSQL_TYPE_SHORT;
-  params[1].buffer = &co_port;
+  params[1].buffer = (void *)&co_port;
   params[1].buffer_length = sizeof co_port;
 }
 
-/// @brief function to delete connection by address from database
-/// @param db_connect MYSQL database connection
-/// @param co_ip_addr BIG ENDIAN binary ip address
-/// @param co_port BIG ENDIAN port of the connection
+
+/**
+ * @brief Delete a connection by its address from the database.
+ * 
+ * This function deletes a connection object from the database using its address.
+ * 
+ * @param db_connect The MySQL database connection.
+ * @param co_ip_addr The BIG ENDIAN binary IP address of the connection.
+ * @param co_port The BIG ENDIAN port of the connection.
+ * @return An error code indicating the success or failure of the operation.
+ */
 errcode_t db_co_del_byaddr(MYSQL *db_connect, uint8_t *co_ip_addr, const int16_t co_port)
 {
   MYSQL_STMT *stmt;
@@ -446,9 +566,15 @@ cleanup:
 }
 
 
-/// @brief function to delete connection from database by id
-/// @param db_connect MYSQL database connection
-/// @param co_id connection id
+/**
+ * @brief Delete a connection from the database by its ID.
+ * 
+ * This function deletes a connection object from the database using its ID.
+ * 
+ * @param db_connect The MySQL database connection.
+ * @param co_id The ID of the connection to be deleted.
+ * @return An error code indicating the success or failure of the operation.
+ */
 errcode_t db_co_del_byid(MYSQL *db_connect, const id64_t co_id)
 {
     char query[QUERY_CO_DEL_BYID_LEN + 24];
@@ -462,10 +588,39 @@ errcode_t db_co_del_byid(MYSQL *db_connect, const id64_t co_id)
     return __SUCCESS__;
 }
 
+/**
+ * @brief Delete a connection from the database by its file descriptor.
+ * 
+ * This function deletes a connection object from the database using its file descriptor.
+ * 
+ * @param db_connect The MySQL database connection.
+ * @param co_fd The file descriptor of the connection to be deleted.
+ * @return An error code indicating the success or failure of the operation.
+ */
+errcode_t db_co_del_byfd(MYSQL *db_connect, const sockfd_t co_fd)
+{
+    char query[QUERY_CO_DEL_BYFD_LEN + 16];
 
-/// @brief function to delete all connection rows that where not connected for ... hours (set in the database header query)
-/// @param db_connect MYSQL database connection
-errcode_t db_co_cleanup(MYSQL *db_connect)
+    // Construct the query
+    sprintf(query, QUERY_CO_DEL_BYFD, co_fd);
+    
+    // Execute the query
+    if (!mysql_real_query(db_connect, query, strlen(query)))
+      return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+    return __SUCCESS__;
+}
+
+
+/**
+ * @brief Delete all connection rows that were not active for a specified duration.
+ * 
+ * This function deletes all connection rows from the database that have not been active
+ * for a specified duration, as set in the database header query.
+ * 
+ * @param db_connect The MySQL database connection.
+ * @return An error code indicating the success or failure of the operation.
+ */
+errcode_t db_co_cleanup(MYSQL *db_connect);
 {
   if (mysql_real_query(db_connect, QUERY_CO_CLEANUP, QUERY_CO_CLEANUP_LEN))
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
@@ -473,9 +628,16 @@ errcode_t db_co_cleanup(MYSQL *db_connect)
 }
 
 
-/// @brief function to reset the Connection table 
-/// @param db_connect MYSQL database connection
-errcode_t db_co_res(MYSQL *db_connect)
+/**
+ * @brief Reset the Connection table.
+ * 
+ * This function resets the Connection table in the database, effectively deleting all
+ * existing rows and resetting the auto-increment ID.
+ * 
+ * @param db_connect The MySQL database connection.
+ * @return An error code indicating the success or failure of the operation.
+ */
+errcode_t db_co_res(MYSQL *db_connect);
 {
   // Execute the query
   if (mysql_real_query(db_connect, QUERY_CO_RESET, QUERY_CO_RESET_LEN))
@@ -491,62 +653,77 @@ errcode_t db_co_res(MYSQL *db_connect)
 
 //---------------------------SELECT
 
-/// @brief binding thge result columns of the select function queries
-/// @param result result to bind (7 columns)
+/**
+ * @brief Bind the result columns of the select function queries.
+ * 
+ * This function binds the result columns of the select function queries to the provided
+ * result array. It allocates memory for each column buffer and sets the appropriate buffer
+ * type, buffer length, and null indicator.
+ * 
+ * @param result The result array to bind (should have space for 8 columns).
+ */
 static inline void db_co_result_bind(MYSQL_BIND *result)
 {
-    // Column 1: co_id (BIGINT)
-    result[0].buffer_type = MYSQL_TYPE_LONGLONG;
-    result[0].buffer = malloc(sizeof(uint64_t));
-    result[0].buffer_length = sizeof(uint64_t);
-    result[0].is_null = 0;
+  // Column 1: co_id (BIGINT)
+  result[0].buffer_type = MYSQL_TYPE_LONGLONG;
+  result[0].buffer = malloc(sizeof(uint64_t));
+  result[0].buffer_length = sizeof(uint64_t);
+  result[0].is_null = 0;
 
-    // Column 2: co_fd (INT)
-    result[1].buffer_type = MYSQL_TYPE_LONG;
-    result[1].buffer = malloc(sizeof(int32_t));
-    result[1].buffer_length = sizeof(int32_t);
-    result[1].is_null = 0;
+  // Column 2: co_fd (INT)
+  result[1].buffer_type = MYSQL_TYPE_LONG;
+  result[1].buffer = malloc(sizeof(int32_t));
+  result[1].buffer_length = sizeof(int32_t);
+  result[1].is_null = 0;
 
-    // Column 3: co_auth_status (TINYINT)
-    result[2].buffer_type = MYSQL_TYPE_TINY;
-    result[2].buffer = malloc(sizeof(uint8_t));
-    result[2].buffer_length = sizeof(uint8_t);
-    result[2].is_null = 0;
+  // Column 3: co_auth_status (TINYINT)
+  result[2].buffer_type = MYSQL_TYPE_TINY;
+  result[2].buffer = malloc(sizeof(uint8_t));
+  result[2].buffer_length = sizeof(uint8_t);
+  result[2].is_null = 0;
 
-    // Column 4: co_last_co (DATETIME)
-    result[3].buffer_type = MYSQL_TYPE_DATETIME;
-    result[3].buffer = malloc(sizeof(MYSQL_TIME));
-    result[3].buffer_length = sizeof(MYSQL_TIME);
-    result[3].is_null = 0;
+  // Column 4: co_last_co (DATETIME)
+  result[3].buffer_type = MYSQL_TYPE_DATETIME;
+  result[3].buffer = malloc(sizeof(MYSQL_TIME));
+  result[3].buffer_length = sizeof(MYSQL_TIME);
+  result[3].is_null = 0;
 
-    // Column 5: co_af (SMALLINT)
-    result[4].buffer_type = MYSQL_TYPE_SHORT;
-    result[4].buffer = malloc(sizeof(uint16_t));
-    result[4].buffer_length = sizeof(uint16_t);
-    result[4].is_null = 0;
+  // Column 5: co_af (SMALLINT)
+  result[4].buffer_type = MYSQL_TYPE_SHORT;
+  result[4].buffer = malloc(sizeof(uint16_t));
+  result[4].buffer_length = sizeof(uint16_t);
+  result[4].is_null = 0;
 
-    // Column 6: co_port (SMALLINT)
-    result[5].buffer_type = MYSQL_TYPE_SHORT;
-    result[5].buffer = malloc(sizeof(uint16_t));
-    result[5].buffer_length = sizeof(uint16_t);
-    result[5].is_null = 0;
+  // Column 6: co_port (SMALLINT)
+  result[5].buffer_type = MYSQL_TYPE_SHORT;
+  result[5].buffer = malloc(sizeof(uint16_t));
+  result[5].buffer_length = sizeof(uint16_t);
+  result[5].is_null = 0;
 
-    // Column 7: co_ip_addr (BINARY)
-    result[6].buffer_type = MYSQL_TYPE_BLOB;
-    result[6].buffer = malloc(SIZE_IP_ADDR);
-    result[6].buffer_length = SIZE_IP_ADDR;
-    result[6].is_null = 0;
+  // Column 7: co_ip_addr (BINARY)
+  result[6].buffer_type = MYSQL_TYPE_BLOB;
+  result[6].buffer = malloc(SIZE_IP_ADDR);
+  result[6].buffer_length = SIZE_IP_ADDR;
+  result[6].is_null = 0;
 
-    // Column 8: co_key (BINARY)
-    result[7].buffer_type = MYSQL_TYPE_BLOB;
-    result[7].buffer = malloc(crypto_secretbox_KEYBYTES);
-    result[7].buffer_length = crypto_secretbox_KEYBYTES;
-    result[7].is_null = 0;
+  // Column 8: co_key (BINARY)
+  result[7].buffer_type = MYSQL_TYPE_BLOB;
+  result[7].buffer = malloc(crypto_secretbox_KEYBYTES);
+  result[7].buffer_length = crypto_secretbox_KEYBYTES;
+  result[7].is_null = 0;
 }
 
-/// @brief FUNCTION TO copy the dataa fetched in the result sql object to the connection object
-/// @param co connection object
-/// @param result result fetched from the database after the query
+
+/**
+ * @brief FUNCTION TO copy the data fetched in the result SQL object to the connection object.
+ * 
+ * This function copies the data fetched from the database result object to the provided 
+ * connection object. It assumes that the result object contains data for each field of 
+ * the connection object in the same order as defined in the `co_t` structure.
+ * 
+ * @param co The connection object to which the data will be copied.
+ * @param result The result fetched from the database after the query.
+ */
 static inline void db_co_res_cpy(co_t *co, MYSQL_BIND *result)
 {
   co->co_id = *((id64_t *)result[0].buffer);
@@ -560,11 +737,20 @@ static inline void db_co_res_cpy(co_t *co, MYSQL_BIND *result)
 }
 
 
-/// @attention Memory will be allocated internally for co object
-/// @brief get all columns by id
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param co_id id of the connection
+
+/**
+ * @attention Memory will be allocated internally for the `co` object.
+ * 
+ * @brief Get all columns by ID from the database.
+ * 
+ * This function retrieves all columns of a connection identified by the given ID from the database.
+ * Memory will be allocated internally for the `co` object to store the retrieved data.
+ * 
+ * @param db_connect The MYSQL database connection.
+ * @param co Pointer to a pointer to a connection object. Memory will be allocated internally for this object.
+ * @param co_id The ID of the connection.
+ * @return An error code indicating the status of the operation.
+ */
 errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
 {
   MYSQL_STMT *stmt;
@@ -572,6 +758,7 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
   MYSQL_BIND result[CO_NROWS]; // Number of columns in the result set
   size_t i;
 
+  // Initialize the statement
   if (!(stmt = mysql_stmt_init(db_connect)))
     return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
 
@@ -579,6 +766,7 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
   if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_ID, QUERY_CO_SEL_ALL_BY_ID_LEN))
     goto cleanup;
 
+  // Initialize the parameter
   bzero((void*)&param, sizeof(param));
   param.buffer_type = MYSQL_TYPE_LONGLONG;
   param.buffer = (void*)&co_id;
@@ -596,6 +784,7 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
   // Bind result set columns to variables
   db_co_result_bind(result);
 
+  // Bind result set to the statement
   if (mysql_stmt_bind_result(stmt, result))
     goto cleanup;
 
@@ -618,27 +807,44 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
     ++i;
   }
 
+  // Free memory allocated for result buffers
   for (i = 0; i < CO_NROWS; ++i)
     free(result[i].buffer);
+
+  // Close and free the statement
   mysql_stmt_close(stmt);
   mysql_stmt_free_result(stmt);
   return __SUCCESS__;
+
 cleanup:
+  // Free memory allocated for result buffers
   for (i = 0; i < CO_NROWS; ++i)
     free(result[i].buffer);
+
+  // Close and free the statement
   mysql_stmt_close(stmt);
   mysql_stmt_free_result(stmt);
+
   return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
-/// @attention Memory will be allocated internally for co objects and nrow set internally
-/// @attention Should only be used in case of short interval db_cleanups 
-/// @brief get all columns of all rows matching co_fd
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param nrow number of rows returned by the query 
-/// @param co_fd file descriptor number we are looking for
+
+/// @attention Memory will be allocated internally for co objects and nrow set internally.
+///             The memory for co objects must be freed by the caller to avoid memory leaks.
+/// @brief Get all columns of all rows matching co_fd.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co Pointer to a pointer to a connection object (co) where the fetched data will be stored.
+///           Memory will be allocated internally based on the number of rows fetched.
+/// @param nrow Pointer to a size_t variable where the number of rows fetched will be stored.
+/// @param co_fd The file descriptor number for which rows will be retrieved from the database.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to initialize the statement,
+///       prepare the query, bind parameters, execute the statement, or fetch rows.
+///     - Returns a warning code if no rows are fetched from the query.
 errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const sockfd_t co_fd)
 {
   MYSQL_STMT *stmt;
@@ -712,12 +918,21 @@ cleanup:
 }
 
 
-/// @attention Memory will be allocated internally
-/// @brief get all columns by connection / authenticcation status
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param nrow number of rows returned by the query 
-/// @param co_auth_status connection status
+/// @brief Retrieve all columns by connection/authentication status.
+///
+/// This function fetches all columns from the database where the connection/authentication status matches the specified value.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co Pointer to a pointer to a connection object (co) where the fetched data will be stored.
+///           Memory will be allocated internally based on the number of rows fetched.
+/// @param nrow Pointer to a size_t variable where the number of rows fetched will be stored.
+/// @param co_auth_status The connection/authentication status to match against in the database query.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to initialize the statement,
+///       prepare the query, bind parameters, execute the statement, or fetch rows.
+///     - Returns a warning code if no rows are fetched from the query.
 errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow, const flag_t co_auth_status)
 {
   MYSQL_STMT *stmt;
@@ -790,6 +1005,14 @@ cleanup:
 }
 
 
+/// @brief Fill the parameter values for selecting all columns by IP address.
+///
+/// This function fills the parameter values required for a database query to select all columns where the IP address matches
+/// the specified value.
+///
+/// @param params Pointer to an array of MYSQL_BIND structures where the parameter values will be stored.
+/// @param co_ip_addr The IP address in big-endian byte order.
+/// @param co_port The connection port number in big-endian byte order.
 static inline void fill_params_co_sel_by_addr(MYSQL_BIND *params, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   bzero((void*)params, sizeof(params));
@@ -802,13 +1025,22 @@ static inline void fill_params_co_sel_by_addr(MYSQL_BIND *params, const uint8_t 
   params[1].buffer_length = sizeof co_port;
 }
 
-/// @attention Memory will be allocated internally for co objects and nrow set internally
-/// @brief get all columns by ip address
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param nrow number of rows returned by the query 
-/// @param co_ip_addr ip address big endian byte order
-/// @param co_port connection port number big endian byte order
+/// @attention Memory will be allocated internally for co objects and nrow set internally.
+/// @brief Get all columns by IP address.
+///
+/// This function retrieves all columns from the database where the IP address and port number match the specified values.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co Pointer to a pointer to a connection object (co) where the fetched data will be stored.
+///           Memory will be allocated internally based on the number of rows fetched.
+/// @param nrow Pointer to a size_t variable where the number of rows fetched will be stored.
+/// @param co_ip_addr The IP address in big-endian byte order.
+/// @param co_port The connection port number in big-endian byte order.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to initialize the statement,
+///       prepare the query, bind parameters, execute the statement, or fetch rows.
 errcode_t db_co_sel_all_by_addr(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   MYSQL_STMT *stmt;
@@ -877,12 +1109,18 @@ cleanup:
   return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
-/// @attention Memory will be allocated internally for co objects and nrow set internally
-/// @brief get symmetric key for client that has that address pair (ip, port)
-/// @param db_connect MYSQL database connection
-/// @param key symmetric key
-/// @param co_ip_addr connection ip address big endian byte order
-/// @param co_port  connection port big endian byte order
+/// @brief Get the symmetric key for the client that has the specified address pair (ip, port).
+///
+/// This function retrieves the symmetric key for the client that has the specified address pair (ip, port).
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_key Buffer to store the symmetric key.
+/// @param co_ip_addr Connection IP address in BIG ENDIAN BYTE ORDER.
+/// @param co_port Connection port number in BIG ENDIAN BYTE ORDER.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
 errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   MYSQL_STMT *stmt;
@@ -943,12 +1181,17 @@ cleanup:
 }
 
 
-//---------------------------UPDATE
-
-/// @brief update connection file descriptor to <co_fd> has id <co_id>
-/// @param db_connect MYSQL database connection
-/// @param co_fd connection file descriptor
-/// @param co_fd connection id
+/// @brief Update the connection file descriptor to a new value based on the connection ID.
+///
+/// This function updates the connection file descriptor in the database to a new value based on the provided connection ID.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_fd The new connection file descriptor.
+/// @param co_id The connection ID.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
 errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_id)
 {
   char query[QUERY_CO_UP_FD_BY_ID_LEN + 24 + 16];
@@ -960,10 +1203,17 @@ errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_id)
   return __SUCCESS__;
 }
 
-/// @brief update connection file descriptor to <co_fd_new> has fd <co_fd>
-/// @param db_connect MYSQL database connection
-/// @param co_fd_new new connection file descriptor
-/// @param co_fd connection file descriptor
+/// @brief Update the connection file descriptor to a new value based on the existing file descriptor.
+///
+/// This function updates the connection file descriptor in the database to a new value based on the existing file descriptor.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_fd_new The new connection file descriptor.
+/// @param co_fd The existing connection file descriptor.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
 errcode_t db_co_up_fd_by_fd(MYSQL *db_connect, const sockfd_t co_fd_new, sockfd_t co_fd)
 {
   char query[QUERY_CO_UP_FD_BY_FD_LEN + 16 + 16];
@@ -976,11 +1226,14 @@ errcode_t db_co_up_fd_by_fd(MYSQL *db_connect, const sockfd_t co_fd_new, sockfd_
 }
 
 
-/// @brief bind the parameters for the database query
-/// @param params parameters
-/// @param co_fd socket file descriptor
-/// @param co_ip_addr connection ip address BIG ENDIAN BYTE ORDER
-/// @param co_port conenction port number BIG ENDIAN BYTE ORDER
+/// @brief Bind the parameters for the database query to update the connection file descriptor by address.
+///
+/// This function fills the parameter values required for a database query to update the connection file descriptor by address.
+///
+/// @param params Pointer to an array of MYSQL_BIND structures where the parameter values will be stored.
+/// @param co_fd The socket file descriptor.
+/// @param co_ip_addr Connection IP address in BIG ENDIAN BYTE ORDER.
+/// @param co_port Connection port number in BIG ENDIAN BYTE ORDER.
 static inline void fill_params_co_update_fd_by_addr(MYSQL_BIND *params, sockfd_t co_fd, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   // param1: socket file descriptor
@@ -999,11 +1252,18 @@ static inline void fill_params_co_update_fd_by_addr(MYSQL_BIND *params, sockfd_t
   params[2].buffer_length = sizeof co_port;
 }
 
-/// @brief update connection file descriptor of the <co_ip_addr co_port> address pair
-/// @param db_connect MYSQL database connection
-/// @param co_fd socket file descriptor
-/// @param co_ip_addr connection ip address BIG ENDIAN
-/// @param co_port connection port BIG ENDIAN
+/// @brief Update the connection file descriptor for the provided connection address.
+///
+/// This function updates the connection file descriptor in the database for the provided connection address.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_fd The socket file descriptor.
+/// @param co_ip_addr Connection IP address in BIG ENDIAN BYTE ORDER.
+/// @param co_port Connection port number in BIG ENDIAN BYTE ORDER.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
 errcode_t db_co_up_fd_by_addr(MYSQL *db_connect, sockfd_t co_fd, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   MYSQL_STMT *stmt;
@@ -1038,10 +1298,17 @@ cleanup:
 }
 
 
-/// @brief update connection row to <co_auth_status> status that has id = <co_id>
-/// @param db_connect MYSQL database connection
-/// @param co_auth_status new connection status
-/// @param co_id connection id
+/// @brief Update the connection row to a new authentication status based on the connection ID.
+///
+/// This function updates the connection row in the database to a new authentication status based on the provided connection ID.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_auth_status The new connection status.
+/// @param co_id The connection ID.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
 errcode_t db_co_up_auth_stat_by_id(MYSQL *db_connect, flag_t co_auth_status, id64_t co_id)
 {
   char query[QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID_LEN + 24 + 8];
@@ -1054,10 +1321,17 @@ errcode_t db_co_up_auth_stat_by_id(MYSQL *db_connect, flag_t co_auth_status, id6
 }
 
 
-/// @brief update connection row to <co_auth_status> status that has fd = <co_fd>
-/// @param db_connect MYSQL database connection
-/// @param co_auth_status new connection status
-/// @param co_id file descriptor
+/// @brief Update the connection row to a new authentication status based on the file descriptor.
+///
+/// This function updates the connection row in the database to a new authentication status based on the provided file descriptor.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_auth_status The new connection status.
+/// @param co_fd The file descriptor.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
 inline errcode_t db_co_up_auth_stat_by_fd(MYSQL *db_connect, flag_t co_auth_status, sockfd_t co_fd)
 {
   char query[QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD_LEN + 24 + 8];
@@ -1070,11 +1344,14 @@ inline errcode_t db_co_up_auth_stat_by_fd(MYSQL *db_connect, flag_t co_auth_stat
 }
 
 
-/// @brief bindthe parameters for the database query
-/// @param params parameters to bind for the query
-/// @param co_auth_status new authentication status to set
-/// @param co_ip_addr connection ip address BIG ENDIAN BYTE ORDER
-/// @param co_port conenction port number BIG ENDIAN BYTE ORDER
+/// @brief Bind the parameters for the database query to update authentication status by address.
+///
+/// This function fills the parameter values required for a database query to update the connection authentication status by address.
+///
+/// @param params Pointer to an array of MYSQL_BIND structures where the parameter values will be stored.
+/// @param co_auth_status The new authentication status to set.
+/// @param co_ip_addr Connection IP address in BIG ENDIAN BYTE ORDER.
+/// @param co_port Connection port number in BIG ENDIAN BYTE ORDER.
 static inline void fill_params_co_up_auth_stat_by_sockaddr(MYSQL_BIND *params, flag_t co_auth_status, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   // param 1: connection new authentication status
@@ -1091,11 +1368,18 @@ static inline void fill_params_co_up_auth_stat_by_sockaddr(MYSQL_BIND *params, f
   params[2].buffer_length = sizeof co_port;
 }
 
-/// @brief update connection row to <co_auth_status> status that have idaddr = <co_ip_addr> and portnum = <co_port>
-/// @param db_connect MYSQL database connection
-/// @param co_auth_status new connection status
-/// @param co_ip_addr connection ip address BIG ENDIAN
-/// @param co_port connection port BIG ENDIAN
+/// @brief Update the connection row to a new authentication status based on the connection address.
+///
+/// This function updates the connection row in the database to a new authentication status based on the provided connection address.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_auth_status The new connection status.
+/// @param co_ip_addr Connection IP address in BIG ENDIAN BYTE ORDER.
+/// @param co_port Connection port in BIG ENDIAN BYTE ORDER.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
 errcode_t db_co_up_auth_stat_by_addr(MYSQL *db_connect, flag_t co_auth_status, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   MYSQL_STMT *stmt; // statement handle
@@ -1131,10 +1415,16 @@ cleanup:
 }
 
 
-/// @brief update connection rows to <co_auth_status> status to disconnected that last connected <hours> hours ago
-/// @param db_connect MYSQL database connection
-/// @param co_auth_status new connection status
-/// @param hours hours of interval with last connection
+/// @brief Update connection rows to disconnected status that were last connected a specified number of hours ago.
+///
+/// This function updates the connection status in the database to disconnected for rows where the last connection
+/// occurred a specified number of hours ago.
+///
+/// @param db_connect The MYSQL database connection.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
 errcode_t db_co_up_auth_stat_by_last_co(MYSQL *db_connect)
 {
   char query[QUERY_CO_UP_AUTH_AUTH_STAT_BY_LAST_CO_LEN + 8];
@@ -1148,10 +1438,13 @@ errcode_t db_co_up_auth_stat_by_last_co(MYSQL *db_connect)
 }
 
 
-/// @brief bind the parameters for the database query
-/// @param params parameters
-/// @param co_key symmetric key sent by the client
-/// @param co_id id of the instance in the db
+/// @brief Bind the parameters for the database query to update the key by connection ID.
+///
+/// This function fills the parameter values required for a database query to update the connection key by ID.
+///
+/// @param params Pointer to an array of MYSQL_BIND structures where the parameter values will be stored.
+/// @param co_key The new connection key.
+/// @param co_id The ID of the instance in the database.
 static inline void fill_params_co_up_key_by_id(MYSQL_BIND *params, const uint8_t *co_key, id64_t co_id)
 {
   // param1: new connection key
@@ -1166,11 +1459,19 @@ static inline void fill_params_co_up_key_by_id(MYSQL_BIND *params, const uint8_t
 
 }
 
-/// @brief 
-/// @param db_connect 
-/// @param co_key 
-/// @param co_id 
+
+/// @brief Update connection key by connection ID.
+///
+/// This function updates the connection key in the database based on the provided connection ID.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_key The new connection key.
+/// @param co_id The ID of the instance in the database.
+///
 /// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to initialize the statement,
+///       prepare the query, bind parameters, or execute the statement.
 errcode_t db_co_up_key_by_id(MYSQL *db_connect, const uint8_t *co_key, id64_t co_id)
 {
   MYSQL_STMT *stmt;
@@ -1202,11 +1503,13 @@ cleanup:
 }
 
 
-/// @brief bind the parameters for the database query
-/// @param params parameters
-/// @param co_fd socket file descriptor
-/// @param co_ip_addr connection ip address BIG ENDIAN BYTE ORDER
-/// @param co_port conenction port number BIG ENDIAN BYTE ORDER
+/// @brief Bind the parameters for the database query to update the key by file descriptor.
+///
+/// This function fills the parameter values required for a database query to update the connection key by file descriptor.
+///
+/// @param params Pointer to an array of MYSQL_BIND structures where the parameter values will be stored.
+/// @param co_key The new connection key.
+/// @param co_fd The socket file descriptor.
 static inline void fill_params_co_up_key_by_fd(MYSQL_BIND *params, const uint8_t *co_key, sockfd_t co_fd)
 {
   // param1: new connection key
@@ -1220,11 +1523,18 @@ static inline void fill_params_co_up_key_by_fd(MYSQL_BIND *params, const uint8_t
   params[0].buffer_length = sizeof co_fd;
 }
 
-/// @brief 
-/// @param db_connect 
-/// @param co_key 
-/// @param co_fd 
+/// @brief Update connection key by file descriptor.
+///
+/// This function updates the connection key in the database based on the provided file descriptor.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_key The new connection key.
+/// @param co_fd The socket file descriptor.
+///
 /// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to initialize the statement,
+///       prepare the query, bind parameters, or execute the statement.
 errcode_t db_co_up_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t co_fd)
 {
   MYSQL_STMT *stmt;
@@ -1255,11 +1565,15 @@ cleanup:
 }
 
 
-/// @brief bind the parameters for the database query
-/// @param params parameters
-/// @param co_fd socket file descriptor
-/// @param co_ip_addr connection ip address BIG ENDIAN BYTE ORDER
-/// @param co_port conenction port number BIG ENDIAN BYTE ORDER
+/// @brief Bind the parameters for the database query to update the key by IP address and port number.
+///
+/// This function fills the parameter values required for a database query to update the connection key by IP address
+/// and port number.
+///
+/// @param params Pointer to an array of MYSQL_BIND structures where the parameter values will be stored.
+/// @param co_key The new connection key.
+/// @param co_ip_addr The connection IP address in big-endian byte order.
+/// @param co_port The connection port number in big-endian byte order.
 static inline void fill_params_co_up_key_by_addr(MYSQL_BIND *params, const uint8_t *co_key, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   // param1: new connection key
@@ -1278,12 +1592,19 @@ static inline void fill_params_co_up_key_by_addr(MYSQL_BIND *params, const uint8
   params[2].buffer_length = sizeof co_port;
 }
 
-/// @brief 
-/// @param db_connect 
-/// @param co_key 
-/// @param co_ip_addr 
-/// @param co_port 
+/// @brief Update connection key by IP address and port number.
+///
+/// This function updates the connection key in the database based on the provided IP address and port number.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_key The new connection key.
+/// @param co_ip_addr The connection IP address in big-endian byte order.
+/// @param co_port The connection port number in big-endian byte order.
+///
 /// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to initialize the statement,
+///       prepare the query, bind parameters, or execute the statement.
 errcode_t db_co_up_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   MYSQL_STMT *stmt;
