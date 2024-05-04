@@ -4,6 +4,20 @@
 //              AUTHENTICATION
 //===============================================
 
+pthread_mutex_t mutex_connection_global;
+pthread_mutex_t mutex_connection_fd;
+pthread_mutex_t mutex_connection_auth_status;
+pthread_mutex_t mutex_connection_key;
+
+#if (ATOMIC_SUPPORT) 
+  _Atomic int32_t memory_w = 0;
+  
+#else
+  int32_t memory_w = 0;
+  extern pthread_mutex_t mutex_thread_id; // mutex will only be used once by everythread to check id
+  extern pthread_mutex_t mutex_memory_w;  // mutex will be used for kernel memory warnings 
+#endif
+
 
 /**
  * @brief Prompt user for the database hostname.
@@ -11,7 +25,7 @@
  * @param host Buffer to store the hostname.
  * @return __SUCCESS__ on success, __FAILURE__ on failure.
  */
-inline errcode_t db_get_auth_host(char *host) {
+errcode_t db_get_auth_host(char *host) {
     printf("Enter database hostname: ");
     if (!fgets(host, DB_SIZE_HOST, stdin))
         return __FAILURE__;
@@ -25,7 +39,7 @@ inline errcode_t db_get_auth_host(char *host) {
  * @param user Buffer to store the username.
  * @return __SUCCESS__ on success, __FAILURE__ on failure.
  */
-inline errcode_t db_get_auth_user(char *user) {
+errcode_t db_get_auth_user(char *user) {
     printf("Enter database username: ");
     if (!fgets(user, DB_SIZE_USER, stdin))
         return __FAILURE__;
@@ -39,7 +53,7 @@ inline errcode_t db_get_auth_user(char *user) {
  * @param passwd Buffer to store the password.
  * @return __SUCCESS__ on success, __FAILURE__ on failure.
  */
-inline errcode_t db_get_auth_pass(char *passwd) {
+errcode_t db_get_auth_pass(char *passwd) {
     printf("Enter database password: ");
     char *input = getpass("");
     strncpy(passwd, input, DB_SIZE_PASS - 1);
@@ -53,7 +67,7 @@ inline errcode_t db_get_auth_pass(char *passwd) {
  * @param db Buffer to store the database name.
  * @return __SUCCESS__ on success, __FAILURE__ on failure.
  */
-inline errcode_t db_get_auth_db(char *db) {
+errcode_t db_get_auth_db(char *db) {
     printf("Enter database name: ");
     if (!fgets(db, DB_SIZE_DB, stdin))
         return __FAILURE__;
@@ -70,18 +84,19 @@ inline errcode_t db_get_auth_db(char *db) {
  * @param creds Pointer to db_creds_t structure to store the credentials.
  * @return __SUCCESS__ on success, appropriate error code on failure.
  */
-inline errcode_t db_get_auth(db_creds_t *creds) {
-    memset(creds, 0, sizeof(*creds));
-    if (db_get_auth_host(creds->host))
-        return LOG(DB_LOG_PATH, EDB_W_HOST, EDB_W_HOST_M);
-    if (db_get_auth_user(creds->user))
-        return LOG(DB_LOG_PATH, EDB_W_USER, EDB_W_USER_M);
-    if (db_get_auth_pass(creds->passwd))
-        return LOG(DB_LOG_PATH, EDB_W_PASSWD, EDB_W_PASSWD_M);
-    if (db_get_auth_db(creds->db))
-        return LOG(DB_LOG_PATH, EDB_W_DB, EDB_W_DB_M);
-    creds->port = DB_DEFAULT_PORT; // Assuming DEFAULT_DB_PORT is defined elsewhere
-    return __SUCCESS__;
+errcode_t db_get_auth(db_creds_t *creds)
+{
+  memset(creds, 0, sizeof(*creds));
+  if (db_get_auth_host(creds->host))
+      return LOG(DB_LOG_PATH, EDB_W_HOST, EDB_W_HOST_M);
+  if (db_get_auth_user(creds->user))
+      return LOG(DB_LOG_PATH, EDB_W_USER, EDB_W_USER_M);
+  if (db_get_auth_pass(creds->passwd))
+      return LOG(DB_LOG_PATH, EDB_W_PASSWD, EDB_W_PASSWD_M);
+  if (db_get_auth_db(creds->db))
+      return LOG(DB_LOG_PATH, EDB_W_DB, EDB_W_DB_M);
+  creds->port = DB_DEFAULT_PORT; // Assuming DEFAULT_DB_PORT is defined elsewhere
+  return __SUCCESS__;
 }
 
 

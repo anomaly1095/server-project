@@ -1,5 +1,6 @@
 #include "../include/base.h"
 
+
 /**
  * @brief Get the current system time in the specified format.
  * 
@@ -22,7 +23,7 @@ inline void get_time(char *datetime)
  * @param datetime Formatted datetime string.
  * @return __SUCCESS__ if the log entry is written successfully, or an error code if writing fails.
  */
-static inline errcode_t __logw(FILE *logf, const char *log_path, errcode_t __err, const char *__msg, const char *datetime)
+inline errcode_t __logw(FILE *logf, const char *log_path, errcode_t __err, const char *__msg, const char *datetime)
 {
   logf = fopen(log_path, "a");
   if (!logf) return ELOG;
@@ -61,6 +62,7 @@ inline errcode_t log_write(const char *log_path, errcode_t __err, const char *__
  */
 inline errcode_t get_pass(char *pass)
 {
+  printf("Enter server password: ");
   // Get password from stdin
   if (!fgets(pass, MAX_AUTH_SIZE, stdin))
     return LOG(SECU_LOG_PATH, E_GETPASS, E_GETPASS_M);

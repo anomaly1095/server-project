@@ -1,4 +1,4 @@
 .env
 tests/
 .vscode/
-bin/*.o
+bin/*

@@ -15,7 +15,7 @@
  * @param thread_arg Pointer to the thread_arg_t structure.
  * @return __SUCCESS__ if initialization is successful, or an error code if it fails.
  */
-errcode_t __init(thread_arg_t *thread_arg)
+errcode_t __init__(thread_arg_t *thread_arg)
 {
   thread_arg->db_connect = NULL;
   char *pass = (char *)malloc(MAX_AUTH_SIZE);

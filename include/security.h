@@ -1,9 +1,7 @@
 
 #ifndef SECURITY_H
 #define SECURITY_H      1
-#include "base.h"
-#include ".config.h"
-
+#include "threads.h"
 //===============================================
 //          ----SIZEOF AUTH STREAMS----
 //===============================================

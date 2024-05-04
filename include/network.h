@@ -49,11 +49,11 @@
 //                  OPTIONS
 //===============================================
 
-int32_t __KEEPALIVE  = 1;  // ON
-int32_t __REUSEADDR  = 1;  // ON
-int32_t __IDLETIME  = 60; // 60 seconds 
-int32_t __INTRLTIME = 10; // 10 seconds
-int32_t __KEEPCNTR  = 5;  // 5 repetitions
+extern int32_t __KEEPALIVE;  // ON
+extern int32_t __REUSEADDR;  // ON
+extern int32_t __IDLETIME; // 60 seconds 
+extern int32_t __INTRLTIME; // 10 seconds
+extern int32_t __KEEPCNTR;  // 5 repetitions
 
 #define SET__KEEPALIVE(fd) (setsockopt(fd, SOL_SOCKET,  SO_KEEPALIVE,  &__KEEPALIVE, sizeof(int)))
 #define SET__REUSEADDR(fd) (setsockopt(fd, SOL_SOCKET,  SO_REUSEADDR,  &__REUSEADDR, sizeof(int)))

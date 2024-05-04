@@ -4,6 +4,12 @@
 //                        SERVER SETUP
 //==========================================================================
 
+int32_t __KEEPALIVE  = 1;  // ON
+int32_t __REUSEADDR  = 1;  // ON
+int32_t __IDLETIME  = 60; // 60 seconds 
+int32_t __INTRLTIME = 10; // 10 seconds
+int32_t __KEEPCNTR  = 5;  // 5 repetitions
+
 
 #if (USING_HN)
 /// @brief Retrieves the IP address associated with the specified host name.

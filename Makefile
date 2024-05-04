@@ -12,17 +12,17 @@ SRC = src
 BIN = bin
 
 # Build all the executables and link in production mode
-all-prod: main-prod init-prod network-prod request-prod database-prod security-prod base-prod
+all-prod: base-prod security-prod database-prod request-prod network-prod init-prod main-prod
 	@echo "Linking final app"
 	gcc -o $(BIN)/server $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(PROD_FLAGS) $(MYSQL_FLAGS) $(SODIUM_FLAGS) $(THREAD_FLAGS)
 	@chmod 100 $(BIN)/server
 	@echo "done"
 
 # Build all the executables and link in debug mode
-all-debug: main-debug init-debug network-debug request-debug database-debug security-debug base-debug
+all-debug: base-debug security-debug database-debug request-debug network-debug init-debug main-debug
 	@echo "Linking final app"
 	gcc -o $(BIN)/final $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(DEBUG_FLAGS) $(MYSQL_FLAGS) $(SODIUM_FLAGS) $(THREAD_FLAGS)
-	@chmod 100 $(BIN)/final
+	@chmod +x $(BIN)/final
 	@echo "done"
 
 # Compile main.c

@@ -14,7 +14,7 @@
  * @param thread_arg Pointer to the thread_arg_t structure.
  * @return __SUCCESS__ if initialization is successful, or an error code if it fails.
  */
-extern errcode_t __init__(thread_arg_t thread_arg);
+errcode_t __init__(thread_arg_t *thread_arg);
 
 
 /**
@@ -26,7 +26,7 @@ extern errcode_t __init__(thread_arg_t thread_arg);
  * @param threads Array of thread identifiers.
  * @param thread_arg Pointer to the thread_arg_t structure.
  */
-extern void run_threads(pthread_t **threads, thread_arg_t *thread_arg);
+void run_threads(pthread_t **threads, thread_arg_t *thread_arg);
 
 
 /**
@@ -47,12 +47,12 @@ int main(int32_t argc, const char **argv)
   pthread_t *threads;
 
   // Initialize libsodium, physical authentication, database connection, and asymmetric key generation
-  status = __init__(thread_arg);
-  if (status != __SUCCESS__) return total_cleanup(thread_arg.db_connect, threads, E_INIT);
+  status = __init__(&thread_arg);
+  if (status) return total_cleanup(thread_arg.db_connect, threads, E_INIT);
 
   // Server setup (socket options, bind, listen)
   status = net_server_setup(&thread_arg.server_addr, &thread_arg.server_fd);
-  if (status != __SUCCESS__) return total_cleanup(thread_arg.db_connect, threads, status);
+  if (status) return total_cleanup(thread_arg.db_connect, threads, status);
 
   // Run child threads to handle incoming data and communications
   run_threads(&threads, &thread_arg);
