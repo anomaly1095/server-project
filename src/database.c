@@ -620,7 +620,7 @@ errcode_t db_co_del_byfd(MYSQL *db_connect, const sockfd_t co_fd)
  * @param db_connect The MySQL database connection.
  * @return An error code indicating the success or failure of the operation.
  */
-errcode_t db_co_cleanup(MYSQL *db_connect);
+errcode_t db_co_cleanup(MYSQL *db_connect)
 {
   if (mysql_real_query(db_connect, QUERY_CO_CLEANUP, QUERY_CO_CLEANUP_LEN))
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
@@ -637,7 +637,7 @@ errcode_t db_co_cleanup(MYSQL *db_connect);
  * @param db_connect The MySQL database connection.
  * @return An error code indicating the success or failure of the operation.
  */
-errcode_t db_co_res(MYSQL *db_connect);
+errcode_t db_co_res(MYSQL *db_connect)
 {
   // Execute the query
   if (mysql_real_query(db_connect, QUERY_CO_RESET, QUERY_CO_RESET_LEN))

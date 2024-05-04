@@ -17,17 +17,16 @@ This project implements a robust and secure network communication system with ex
 
 ## Installation
 
-1. Clone the repository: `git clone https://github.com/your-username/your-repo.git`
-2. Install dependencies: `cd your-repo && npm install`
+1. Clone the repository: `git clone https://github.com/anomaly1095/network_server.git`
+2. Install dependencies: `cd your-repo && chmod 544 install.sh && ./install.sh`
 3. Configure the project settings: Modify the configuration files according to your requirements.
-4. Build the project: `make`
+4. Build the project: `make all-prod` | `make help` for more details
 
 ## Usage
 
 1. Start the server: `./server`
-2. Connect to the server: `./client`
-3. Follow the authentication process as per the two-step authentication system.
-4. Start communicating securely over the network.
+2. Follow the authentication process as per the two-step authentication system.
+3. Start communicating securely over the network.
 
 ## Documentation
 
@@ -46,6 +45,6 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Credits
 
-- John Doe - Project Lead
-- Jane Smith - Lead Developer
-- Contributors - [List of contributors](CONTRIBUTORS.md)
+- Youssef Azaiez - Project Lead
+- Yousssef Azaiez - Lead Developer
+- Contributors - [Imen ben Ghanem, ](CONTRIBUTORS.md)
