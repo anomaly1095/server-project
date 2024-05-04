@@ -269,12 +269,9 @@ static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, MYSQL
         return __FAILURE__;
       
       // Save the connection instance to the database Connection table
-      pthread_mutex_lock(&mutex_connection_global); // Lock the mutex for writing to the database connection object
       if (db_co_insert(db_connect, co_new) != __SUCCESS__) {
-        pthread_mutex_unlock(&mutex_connection_global); // Unlock the mutex 
         return __FAILURE__;
-      }
-      pthread_mutex_unlock(&mutex_connection_global); // Unlock the mutex 
+
       return __SUCCESS__;
     }
   }
@@ -354,7 +351,7 @@ static inline errcode_t net_accept_save_new_co(thread_arg_t *thread_arg)
  */
 errcode_t net_connection_handler(thread_arg_t *thread_arg)
 {
-  pollfd_t __fds[1] = {[0].fd = thread_arg->server_fd, [0].events = POLLPRI, [0].revents = 0};
+  pollfd_t __fds[1] = {[0].fd = thread_arg->server_fd, [0].events = POLLIN | POLLPRI, [0].revents = 0};
   int32_t n_events = 0;
   
   for (;;) {
@@ -404,23 +401,18 @@ static void cli_dc(thread_arg_t *thread_arg, size_t thread_index, size_t client_
   close(thread_arg->total_cli_fds[thread_index][client_index].fd);
   
   // Update the connection authentication status in the database to indicate disconnection
-  pthread_mutex_lock(&mutex_connection_auth_status);
   if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_DISCO, thread_arg->total_cli_fds[thread_index][client_index].fd))
     LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M); // Log error if database update fails
-  pthread_mutex_unlock(&mutex_connection_auth_status);
 
   // Update the connection file descriptor in the database to -1 to mark disconnection
-  pthread_mutex_lock(&mutex_connection_fd);
   if (db_co_up_fd_by_fd(thread_arg->db_connect, FD_DISCO, thread_arg->total_cli_fds[thread_index][client_index].fd))
     LOG(DB_LOG_PATH, D_DB_EXIT, D_DB_EXIT_M); // Log error if database update fails
-  pthread_mutex_unlock(&mutex_connection_fd);
 
   // Swap the disconnected client file descriptor with the last active client file descriptor in the array and with it it's details
   thread_arg->total_cli_fds[thread_index][client_index].fd = thread_arg->total_cli_fds[thread_index][last_index].fd;
   thread_arg->total_cli_fds[thread_index][client_index].events = thread_arg->total_cli_fds[thread_index][last_index].events;
   thread_arg->total_cli_fds[thread_index][client_index].revents = thread_arg->total_cli_fds[thread_index][last_index].revents;
-  thread_arg->total_cli_fds[thread_index][last_index].fd = -1; // Set the last active client file descriptor to -1 to mark it as inactive
-  thread_arg->total_cli_fds[thread_index][last_index].fd |= POLLPRI; // Set POLLPRI event for the last active client file descriptor (just to make sure that the next cli authenticates)
+  thread_arg->total_cli_fds[thread_index][last_index].fd = FD_DISCO; // Set the last active client file descriptor to -1 to mark it as inactive
 }
 
 
@@ -797,20 +789,11 @@ errcode_t net_send_pk(thread_arg_t *thread_arg, size_t thread_index, size_t clie
   // Clear the public key from memory after sending
   bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
 
-   // Lock the authentication status mutex to ensure exclusive access to update connection status
-  pthread_mutex_lock(&mutex_connection_auth_status);
   
   // Update client's connection authentication status in the database
   if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_RECVD_PK, thread_arg->total_cli_fds[thread_index][client_index].fd))
-  {
-    // If updating authentication status fails, unlock the mutex before returning
-    pthread_mutex_unlock(&mutex_connection_auth_status);
     return LOG(NET_LOG_PATH, E_ALTER_CO_FLAG, E_ALTER_CO_FLAG_M);
-  }
   
-  // Unlock the authentication status mutex after updating connection status
-  pthread_mutex_unlock(&mutex_connection_auth_status);
-
   return __SUCCESS__;
 }
 
@@ -908,48 +891,33 @@ __failure:
  */
 errcode_t net_send_ping(thread_arg_t *thread_arg, size_t thread_index, size_t client_index, const void *packet, const size_t packet_len)
 {
-  co_t *co; // Pointer to connection object
+  uint8_t key[crypto_secretbox_KEYBYTES];
   uint8_t c[crypto_secretbox_MACBYTES + packet_len]; // Buffer for encrypted message
 
-  // Lock the global connection mutex to ensure exclusive access to shared resources
-  pthread_mutex_lock(&mutex_connection_global);
   // Retrieve connection object including the symmetric key from the database
-  if (db_co_sel_all_by_fd(thread_arg->db_connect, &co, thread_arg->total_cli_fds[thread_index][client_index].fd))
+  if (db_co_sel_key_by_fd(thread_arg->db_connect, key, thread_arg->total_cli_fds[thread_index][client_index].fd))
   {
-    // If database query fails, unlock the mutex before returning
-    pthread_mutex_unlock(&mutex_connection_global);
-    if (co)
-      free(co);
+    bzero(key, crypto_secretbox_KEYBYTES);
     return __FAILURE__;
   }
-  // Unlock the global connection mutex after accessing shared resources
-  pthread_mutex_unlock(&mutex_connection_global);
 
   // Encrypt the ping message
-  if (secu_symmetric_encrypt(co->co_key, c, packet, packet_len))
+  if (secu_symmetric_encrypt(key, c, packet, packet_len))
   {
-    free(co);
+    bzero(key, crypto_secretbox_KEYBYTES);
     return __FAILURE__;
   }  
 
-  // Free the retrieved connection object 
-  free(co);
+  bzero(key, crypto_secretbox_KEYBYTES);
 
   // Send the encrypted ping message
   if (sendall(thread_arg, thread_index, client_index, c, crypto_secretbox_MACBYTES))
     return LOG(NET_LOG_PATH, E_SEND_PING, E_SEND_PING_M);
   
-  // Lock the authentication status mutex to ensure exclusive access to update connection status
-  pthread_mutex_lock(&mutex_connection_auth_status);
   // Update connection status to indicate that ping was sent
   if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_SENT_PING, thread_arg->total_cli_fds[thread_index][client_index].fd))
-  {
-    // If database update fails, unlock the mutex before returning
-    pthread_mutex_unlock(&mutex_connection_auth_status);
     return LOG(NET_LOG_PATH, E_SEND_PING, E_SEND_PING_M);
-  }
-  // Unlock the authentication status mutex after updating connection status
-  pthread_mutex_unlock(&mutex_connection_auth_status);
+
   return __SUCCESS__;
 }
 
@@ -971,7 +939,7 @@ errcode_t net_send_ping(thread_arg_t *thread_arg, size_t thread_index, size_t cl
  */
 errcode_t net_recv_auth_ping(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
-  co_t *co; // Pointer to connection object
+  uint8_t key[crypto_secretbox_KEYBYTES];
   uint8_t *correct_ping = PING_HELLO; // Correct ping message
   uint8_t m[PING_HELLO_LEN]; // Buffer for decrypted message
   uint32_t seglen; // Length of data segment
@@ -983,50 +951,33 @@ errcode_t net_recv_auth_ping(const void *req, thread_arg_t *thread_arg, size_t t
   if (seglen != PING_HELLO_LEN)
     return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
 
-  // Lock the global connection mutex to ensure exclusive access to shared resources
-  pthread_mutex_lock(&mutex_connection_global);
-  // Fetch data including connection key from the database
-  if (db_co_sel_all_by_fd(thread_arg->db_connect, &co, thread_arg->total_cli_fds[thread_index][client_index].fd))
+
+  if (db_co_sel_key_by_fd(thread_arg->db_connect, key, thread_arg->total_cli_fds[thread_index][client_index].fd))
   {
-    // If database query fails, unlock the mutex before returning
-    pthread_mutex_unlock(&mutex_connection_global);
-    if (co)
-      free(co);
+    bzero(key, crypto_secretbox_KEYBYTES);
     return __FAILURE__;
   }
-  // Unlock the global connection mutex after accessing shared resources
-  pthread_mutex_unlock(&mutex_connection_global);
   
   // Decrypt the ping message
-  if (secu_symmetric_decrypt(co->co_key, m, req + 8, PING_HELLO_LEN + crypto_secretbox_MACBYTES))
+  if (secu_symmetric_decrypt(key, m, req + 8, PING_HELLO_LEN + crypto_secretbox_MACBYTES))
   {
-    free(co);
+    bzero(key, crypto_secretbox_KEYBYTES);
     return __FAILURE__;
   }  
 
-  // Free the retrieved connection object 
-  free(co);
-  bzero(co, sizeof *co); // Clear the connection object
+  // Free  
+  bzero(key, crypto_secretbox_KEYBYTES);
 
   // Check if the decrypted message matches the correct ping message
   if (memcmp(m, correct_ping, PING_HELLO_LEN))
     return LOG(NET_LOG_PATH, E_INVALID_PING, E_INVALID_PING_M);
   
-  // Lock the authentication status mutex to ensure exclusive access to update connection status
-  pthread_mutex_lock(&mutex_connection_auth_status);
   // Change connection authentication status in the database
   if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_AUTH, thread_arg->total_cli_fds[thread_index][client_index].fd))
-  {
-    // If database update fails, unlock the mutex before returning
-    pthread_mutex_unlock(&mutex_connection_auth_status);
     return __FAILURE__;
-  }
-
-  // Unlock the authentication status mutex after updating connection status
-  pthread_mutex_unlock(&mutex_connection_auth_status);
 
   // change .events to pollin as the client is fully authenticated
-  thread_arg->total_cli_fds[thread_index][client_index].events != POLLPRI;
+  thread_arg->total_cli_fds[thread_index][client_index].events &= ~POLLPRI;
 
   return __SUCCESS__;
 }

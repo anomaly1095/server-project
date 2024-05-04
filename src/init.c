@@ -66,6 +66,7 @@ void run_threads(pthread_t **threads, thread_arg_t *thread_arg)
   pthread_mutex_init(&mutex_connection_global, NULL);
   pthread_mutex_init(&mutex_connection_fd, NULL);
   pthread_mutex_init(&mutex_connection_auth_status, NULL);
+  pthread_mutex_init(&mutex_connection_key);
 #if (!ATOMIC_SUPPORT) // these wont be used in case of atomicity cpu & compiler support
 
   pthread_mutex_init(&mutex_thread_id, NULL);
@@ -104,7 +105,8 @@ inline errcode_t total_cleanup(MYSQL *db_connect, pthread_t *threads, errcode_t 
   pthread_mutex_destroy(&mutex_connection_global);
   pthread_mutex_destroy(&mutex_connection_fd);
   pthread_mutex_destroy(&mutex_connection_auth_status);
-
+  pthread_mutex_destroy(&mutex_connection_key);
+  
   #if (!ATOMIC_SUPPORT)
     pthread_mutex_destroy(&mutex_thread_id);
     pthread_mutex_destroy(&mutex_memory_w);

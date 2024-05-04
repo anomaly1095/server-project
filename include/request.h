@@ -3,7 +3,7 @@
 
 #ifndef REQUEST_H
 #define REQUEST_H     1
-
+#include "database.h"
 /*==========================================================================================
 |Requests are gona be sent from the client to the server                                    |
 |we will define elssewhere messages that are going to be sent from the server to the client |
@@ -20,7 +20,7 @@
 |  |
 /*==========================================================================================*/
 
-#define PING_HELLO          (unsigned char*)"Hello"
+#define PING_HELLO          (const uint8_t*)"Hello"
 #define PING_HELLO_LEN     (const size_t)__builtin_strlen(PING_HELLO)
 
 //===========================|

@@ -257,21 +257,6 @@ cleanup:
 }
 
 
-/**
- * @brief Fill the parameter values for sk.
- * 
- * This function initializes the parameter for the secret key (sk) retrieved from the database query result.
- * 
- * @param result Query results array.
- * @param sk Secret key buffer.
- */
-static inline void fill_result_KEY_SELECT_SK(MYSQL_BIND *result, uint8_t *sk)
-{
-    // Parameter for secret key (sk)
-    result->buffer_type = MYSQL_TYPE_BLOB;
-    result->buffer = sk;
-    result->buffer_length = crypto_box_SECRETKEYBYTES;
-}
 
 /**
  * @brief Retrieve the secret key from the database.
@@ -296,8 +281,10 @@ errcode_t db_get_sk(MYSQL *db_connect, uint8_t *sk)
     if (mysql_stmt_prepare(stmt, QUERY_SELECT_SK, QUERY_SELECT_SK_LEN) != 0)
         return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-    // Fill the parameter values for sk
-    fill_result_KEY_SELECT_SK(&result, sk);
+    // Parameter for secret key (sk)
+    result.buffer_type = MYSQL_TYPE_BLOB;
+    result.buffer = sk;
+    result.buffer_length = crypto_box_SECRETKEYBYTES;
 
     // Bind the result parameter to the statement
     if (mysql_stmt_bind_result(stmt, &result))
@@ -483,9 +470,13 @@ errcode_t db_co_insert(MYSQL *db_connect, const co_t co_new)
   if (mysql_stmt_bind_param(stmt, params))
     goto cleanup;
 
+  pthread_mutex_lock(&mutex_connection_global);
   // Execute the statement
-  if (!mysql_stmt_execute(stmt))
+  if (!mysql_stmt_execute(stmt)){
+    pthread_mutex_unlock(&mutex_connection_global);
     goto cleanup;
+  }
+  pthread_mutex_unlock(&mutex_connection_global);
 
   // Close the statement handle
   mysql_stmt_close(stmt);
@@ -537,9 +528,14 @@ errcode_t db_co_del_byid(MYSQL *db_connect, const id64_t co_id)
     // Construct the query
     sprintf(query, QUERY_CO_DEL_BYID, co_id);
     
+    pthread_mutex_lock(&mutex_connection_global);
     // Execute the query
-    if (!mysql_real_query(db_connect, query, strlen(query)))
+    if (!mysql_real_query(db_connect, query, strlen(query))){
+      pthread_mutex_unlock(&mutex_connection_global);
       return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+    }
+    pthread_mutex_unlock(&mutex_connection_global);
+
     return __SUCCESS__;
 }
 
@@ -560,9 +556,13 @@ errcode_t db_co_del_byfd(MYSQL *db_connect, const sockfd_t co_fd)
     // Construct the query
     sprintf(query, QUERY_CO_DEL_BYFD, co_fd);
     
+    pthread_mutex_lock(&mutex_connection_global);
     // Execute the query
-    if (!mysql_real_query(db_connect, query, strlen(query)))
+    if (!mysql_real_query(db_connect, query, strlen(query))){
+      pthread_mutex_unlock(&mutex_connection_global);
       return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+    }
+    pthread_mutex_unlock(&mutex_connection_global);
     return __SUCCESS__;
 }
 
@@ -597,9 +597,13 @@ errcode_t db_co_del_byaddr(MYSQL *db_connect, uint8_t *co_ip_addr, const int16_t
   if (mysql_stmt_bind_param(stmt, params))
     goto cleanup;
 
+  pthread_mutex_lock(&mutex_connection_global);
   // Execute the statement
-  if (!mysql_stmt_execute(stmt))
+  if (!mysql_stmt_execute(stmt)){
+    pthread_mutex_unlock(&mutex_connection_global);
     goto cleanup;
+  }
+  pthread_mutex_unlock(&mutex_connection_global);
 
   // Close the statement handle
   mysql_stmt_close(stmt);
@@ -621,8 +625,12 @@ cleanup:
  */
 errcode_t db_co_cleanup(MYSQL *db_connect)
 {
-  if (mysql_real_query(db_connect, QUERY_CO_CLEANUP, QUERY_CO_CLEANUP_LEN))
+  pthread_mutex_lock(&mutex_connection_global);
+  if (mysql_real_query(db_connect, QUERY_CO_CLEANUP, QUERY_CO_CLEANUP_LEN)){
+    pthread_mutex_unlock(&mutex_connection_global);  
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+  }
+  pthread_mutex_unlock(&mutex_connection_global);
   return __SUCCESS__;
 }
 
@@ -638,14 +646,18 @@ errcode_t db_co_cleanup(MYSQL *db_connect)
  */
 errcode_t db_co_res(MYSQL *db_connect)
 {
+  pthread_mutex_lock(&mutex_connection_global);
   // Execute the query
-  if (mysql_real_query(db_connect, QUERY_CO_RESET, QUERY_CO_RESET_LEN))
+  if (mysql_real_query(db_connect, QUERY_CO_RESET, QUERY_CO_RESET_LEN)){
+    pthread_mutex_unlock(&mutex_connection_global);
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
-
+  }
   // Execute the query to reset the auto-increment ID
-  if (mysql_real_query(db_connect, QUERY_CO_RES_ID, QUERY_CO_RES_ID_LEN))
+  if (mysql_real_query(db_connect, QUERY_CO_RES_ID, QUERY_CO_RES_ID_LEN)){
+    pthread_mutex_unlock(&mutex_connection_global);
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
-
+  }
+  pthread_mutex_unlock(&mutex_connection_global);
   return __SUCCESS__;
 }
 
@@ -774,6 +786,7 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
   // Bind the parameter to the statement
   if (mysql_stmt_bind_param(stmt, &param))
     goto cleanup;
+
 
   // Execute the statement
   if (mysql_stmt_execute(stmt))
@@ -1224,9 +1237,12 @@ errcode_t db_co_up_fd_by_id(MYSQL *db_connect, sockfd_t co_fd, id64_t co_id)
   char query[QUERY_CO_UP_FD_BY_ID_LEN + 24 + 16];
   sprintf(query, QUERY_CO_UP_FD_BY_ID, co_fd, co_id);
   // Execute the query
-  if (mysql_real_query(db_connect, query, strlen(query)))
+  pthread_mutex_lock(&mutex_connection_fd);
+  if (mysql_real_query(db_connect, query, strlen(query))){
+    pthread_mutex_unlock(&mutex_connection_fd);
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
-
+  }
+  pthread_mutex_unlock(&mutex_connection_fd);
   return __SUCCESS__;
 }
 
@@ -1245,10 +1261,13 @@ errcode_t db_co_up_fd_by_fd(MYSQL *db_connect, const sockfd_t co_fd_new, sockfd_
 {
   char query[QUERY_CO_UP_FD_BY_FD_LEN + 16 + 16];
   sprintf(query, QUERY_CO_UP_FD_BY_FD, co_fd_new, co_fd);
+  pthread_mutex_lock(&mutex_connection_fd);
   // Execute the query
-  if (mysql_real_query(db_connect, query, strlen(query)))
+  if (mysql_real_query(db_connect, query, strlen(query))){
+    pthread_mutex_unlock(&mutex_connection_fd);
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
-
+  }
+  pthread_mutex_unlock(&mutex_connection_fd);
   return __SUCCESS__;
 }
 
@@ -1310,11 +1329,15 @@ errcode_t db_co_up_fd_by_addr(MYSQL *db_connect, sockfd_t co_fd, const uint8_t *
   // Bind the parameters to the statement
   if (mysql_stmt_bind_param(stmt, params))
     goto cleanup;
-
+  
+  pthread_mutex_lock(&mutex_connection_fd);
   // Execute the statement
-  if (!mysql_stmt_execute(stmt))
+  if (!mysql_stmt_execute(stmt)){
+    pthread_mutex_unlock(&mutex_connection_fd);
     goto cleanup;
-
+  }
+  
+  pthread_mutex_unlock(&mutex_connection_fd);
   // Close the statement handle
   mysql_stmt_close(stmt);
   return __SUCCESS__;
@@ -1340,9 +1363,14 @@ errcode_t db_co_up_auth_stat_by_id(MYSQL *db_connect, flag_t co_auth_status, id6
 {
   char query[QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID_LEN + 24 + 8];
   sprintf(query, QUERY_CO_UP_AUTH_AUTH_STAT_BY_ID, co_auth_status, co_id);
+
+  pthread_mutex_lock(&mutex_connection_auth_status);
   // Execute the query
-  if (mysql_real_query(db_connect, query, strlen(query)))
+  if (mysql_real_query(db_connect, query, strlen(query))){
+    pthread_mutex_unlock(&mutex_connection_auth_status);
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+  }
+  pthread_mutex_unlock(&mutex_connection_auth_status);
   
   return __SUCCESS__;
 }
@@ -1363,10 +1391,15 @@ inline errcode_t db_co_up_auth_stat_by_fd(MYSQL *db_connect, flag_t co_auth_stat
 {
   char query[QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD_LEN + 24 + 8];
   sprintf(query, QUERY_CO_UP_AUTH_AUTH_STAT_BY_FD, co_auth_status, co_fd);
+
+  pthread_mutex_lock(&mutex_connection_auth_status);
   // Execute the query
-  if (mysql_real_query(db_connect, query, strlen(query)))
+  if (mysql_real_query(db_connect, query, strlen(query))){
+    pthread_mutex_unlock(&mutex_connection_auth_status);
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
-  
+  }
+  pthread_mutex_unlock(&mutex_connection_auth_status);
+
   return __SUCCESS__;
 }
 
@@ -1428,10 +1461,14 @@ errcode_t db_co_up_auth_stat_by_addr(MYSQL *db_connect, flag_t co_auth_status, c
   if (mysql_stmt_bind_param(stmt, params))
     goto cleanup;
 
+  pthread_mutex_lock(&mutex_connection_auth_status);
   // Execute the statement
-  if (!mysql_stmt_execute(stmt))
+  if (!mysql_stmt_execute(stmt)){
+    pthread_mutex_unlock(&mutex_connection_auth_status);
     goto cleanup;
+  }
 
+  pthread_mutex_unlock(&mutex_connection_auth_status);
   // Close the statement handle
   mysql_stmt_close(stmt);
   return __SUCCESS__;
@@ -1457,10 +1494,14 @@ errcode_t db_co_up_auth_stat_by_last_co(MYSQL *db_connect)
   char query[QUERY_CO_UP_AUTH_AUTH_STAT_BY_LAST_CO_LEN + 8];
   sprintf(query, QUERY_CO_UP_AUTH_AUTH_STAT_BY_LAST_CO, CO_FLAG_DISCO);
   
+  pthread_mutex_lock(&mutex_connection_auth_status);
   // Execute the query
-  if (mysql_real_query(db_connect, query, strlen(query)))
+  if (mysql_real_query(db_connect, query, strlen(query))){
+    pthread_mutex_unlock(&mutex_connection_auth_status);
     return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+  }
 
+  pthread_mutex_unlock(&mutex_connection_auth_status);
   return __SUCCESS__;
 }
 
@@ -1516,9 +1557,13 @@ errcode_t db_co_up_key_by_id(MYSQL *db_connect, const uint8_t *co_key, id64_t co
   if (mysql_stmt_bind_param(stmt, params))
     goto cleanup;
   
-  if (mysql_stmt_execute(stmt))
+  pthread_mutex_lock(&mutex_connection_key);
+  if (mysql_stmt_execute(stmt)){
+    pthread_mutex_unlock(&mutex_connection_key);
     goto cleanup;
-    
+  }
+  pthread_mutex_unlock(&mutex_connection_key);
+
   bzero((void*)params, sizeof params);
   mysql_stmt_close(stmt);
   return __SUCCESS__;
@@ -1579,8 +1624,13 @@ errcode_t db_co_up_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t 
   if (mysql_stmt_bind_param(stmt, params))
     goto cleanup;
 
-  if (mysql_stmt_execute(stmt))
+  pthread_mutex_lock(&mutex_connection_key);
+  if (mysql_stmt_execute(stmt)){
+    pthread_mutex_unlock(&mutex_connection_key);
     goto cleanup;
+  }
+
+  pthread_mutex_unlock(&mutex_connection_key);
 
   bzero((void*)params, sizeof params);
   mysql_stmt_close(stmt);
@@ -1649,8 +1699,12 @@ errcode_t db_co_up_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const u
   if (mysql_stmt_bind_param(stmt, params))
     goto cleanup;
 
-  if (mysql_stmt_execute(stmt))
+  pthread_mutex_lock(&mutex_connection_key);
+  if (mysql_stmt_execute(stmt)){
+    pthread_mutex_unlock(&mutex_connection_key);
     goto cleanup;
+  }
+  pthread_mutex_unlock(&mutex_connection_key);
 
   bzero((void*)params, sizeof params);
   mysql_stmt_close(stmt);

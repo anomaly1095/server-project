@@ -2,7 +2,7 @@
 
 #ifndef __THREADS_H
 #define __THREADS_H     1
-#include "database.h"
+#include "base.h"
 
 ///@brief developement mode (small values and only ipv4) mainthread + 1 extra thread
 #if (DEV_MODE && !TEST_MODE && !PROD_MODE) // developement mode
@@ -77,5 +77,6 @@
 pthread_mutex_t mutex_connection_global;
 pthread_mutex_t mutex_connection_fd;
 pthread_mutex_t mutex_connection_auth_status;
-  
+pthread_mutex_t mutex_connection_key;
+
 #endif
