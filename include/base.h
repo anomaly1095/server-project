@@ -22,13 +22,6 @@ typedef struct pollfd pollfd_t;
 typedef struct sockaddr sockaddr_t;
 typedef struct hostent  hostent_t;
 
-#define DEV_MODE      1
-#define TEST_MODE     0
-#define PROD_MODE     0
-
-
-
-
 
 #define MAX_AUTH_SIZE 128U
 #define DATETIME_MAX_LEN 21U

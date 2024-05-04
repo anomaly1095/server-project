@@ -1,6 +1,6 @@
 # Secure Network Communication System
 
-This project implements a robust and secure network communication system with extensive features such as two-step authentication, physical authentication using USB flash drives, encryption using libsodium, multithreading, multiplexing, and a dedicated module for error handling and logging.
+This project implements a robust and secure network communication protocol system with extensive features such as two-step authentication, physical authentication using USB flash drives, encryption using libsodium, multithreading, multiplexing, and a dedicated module for error handling and logging.
 
 ## Features
 
@@ -19,8 +19,8 @@ This project implements a robust and secure network communication system with ex
 
 1. Clone the repository: `git clone https://github.com/anomaly1095/network_server.git`
 2. Install dependencies: `cd your-repo && chmod 544 install.sh && ./install.sh`
-3. Configure the project settings: Modify the configuration files according to your requirements.
-4. Build the project: `make all-prod` | `make help` for more details
+3. Configure the project settings: Modify the configuration file /include/.config.h to fit you needs.
+4. Build the project: `make all-prod` | `make help` for more details.
 
 ## Usage
 
@@ -47,4 +47,4 @@ This project is licensed under the [MIT License](LICENSE).
 
 - Youssef Azaiez - Project Lead
 - Yousssef Azaiez - Lead Developer
-- Contributors - [Imen ben Ghanem, ](CONTRIBUTORS.md)
+- Contributors - [Imen ben Ghanem](CONTRIBUTORS.md)

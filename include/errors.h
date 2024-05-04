@@ -5,7 +5,10 @@
   
 //=========================================================================
 
-typedef int32_t errcode_t;
+typedef unsigned int errcode_t;
+#define DATA_AVAILABLE      1
+#define DATA_UNAVAILABLE    0
+
 #define __SUCCESS__   00
 
 // general purpose errors 1-->99
@@ -115,7 +118,7 @@ typedef int32_t errcode_t;
 #define EREQ_LEN            402
 
 #define EUNDEF_REQ_CODE_M   "Undefined request code"
-#define EREQ_LEN_M          403
+#define EREQ_LEN_M          "ERROR wrong request length"
 
 //=========================================================================
 // network errors 400->500
@@ -142,13 +145,14 @@ typedef int32_t errcode_t;
 #define EGET_HOSTBYNAME_M   "ERROR during server DNS lookup"
 #define E_INVAL_ADDRLEN_M   "ERROR Invalid address len resulting of DNS resolving"
 #define E_UNSUPPORTED_AF_M  "WARNING Unsupported address family in new connection"
-#define MAX_FDS_IN_PROGRAM_M"WARNING max_file descriptors reached for system"
+#define MAX_FDS_IN_PROGRAM_M "WARNING max_file descriptors reached for system"
 #define ECONNREFUSED_M1     "ERROR in recv() A remote host refused to allow the network connection"
 #define EFAULT_M1           "ERROR in recv() The receive buffer pointer point outside the \
 process's address space."
 #define ENOTCONN_M1         "ERROR in recv() The socket is associated with a connection-oriented \
 protocol and has not been connected"
 #define EINTR_M1            "ERROR in recv() interrupt occured"
+#define EPIPE_M             "ERROR broken pipe communication was cut with client"                
 #define ENOTSOCK_M1         "ERROR in recv() fd is not a socket"
 #define EINVAL_M1           "ERROR in recv() invalid argument"
 #define ECONNREFUSED_M2     "ERROR in send() A remote host refused to allow the network connection"

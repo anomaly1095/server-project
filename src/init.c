@@ -41,7 +41,7 @@ errcode_t __init(thread_arg_t *thread_arg)
     return __FAILURE__;
 
   // Step 4: Initialize pollfds for polling
-  net_init_clifd(thread_arg->total_cli_fds);
+  net_init_clifd((pollfd_t**)thread_arg->total_cli_fds);
 
   // Step 5: Delete old asymmetric keys, generate new ones, and save them
   if (secu_init_keys(thread_arg->db_connect))
@@ -66,7 +66,7 @@ void run_threads(pthread_t **threads, thread_arg_t *thread_arg)
   pthread_mutex_init(&mutex_connection_global, NULL);
   pthread_mutex_init(&mutex_connection_fd, NULL);
   pthread_mutex_init(&mutex_connection_auth_status, NULL);
-  pthread_mutex_init(&mutex_connection_key);
+  pthread_mutex_init(&mutex_connection_key, NULL);
 #if (!ATOMIC_SUPPORT) // these wont be used in case of atomicity cpu & compiler support
 
   pthread_mutex_init(&mutex_thread_id, NULL);

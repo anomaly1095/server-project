@@ -11,7 +11,7 @@
  * @param host Buffer to store the hostname.
  * @return __SUCCESS__ on success, __FAILURE__ on failure.
  */
-static inline errcode_t db_get_auth_host(char *host) {
+inline errcode_t db_get_auth_host(char *host) {
     printf("Enter database hostname: ");
     if (!fgets(host, DB_SIZE_HOST, stdin))
         return __FAILURE__;
@@ -25,7 +25,7 @@ static inline errcode_t db_get_auth_host(char *host) {
  * @param user Buffer to store the username.
  * @return __SUCCESS__ on success, __FAILURE__ on failure.
  */
-static inline errcode_t db_get_auth_user(char *user) {
+inline errcode_t db_get_auth_user(char *user) {
     printf("Enter database username: ");
     if (!fgets(user, DB_SIZE_USER, stdin))
         return __FAILURE__;
@@ -39,7 +39,7 @@ static inline errcode_t db_get_auth_user(char *user) {
  * @param passwd Buffer to store the password.
  * @return __SUCCESS__ on success, __FAILURE__ on failure.
  */
-static inline errcode_t db_get_auth_pass(char *passwd) {
+inline errcode_t db_get_auth_pass(char *passwd) {
     printf("Enter database password: ");
     char *input = getpass("");
     strncpy(passwd, input, DB_SIZE_PASS - 1);
@@ -53,7 +53,7 @@ static inline errcode_t db_get_auth_pass(char *passwd) {
  * @param db Buffer to store the database name.
  * @return __SUCCESS__ on success, __FAILURE__ on failure.
  */
-static inline errcode_t db_get_auth_db(char *db) {
+inline errcode_t db_get_auth_db(char *db) {
     printf("Enter database name: ");
     if (!fgets(db, DB_SIZE_DB, stdin))
         return __FAILURE__;
@@ -158,7 +158,7 @@ static inline void fill_params_KEY_INSERT(MYSQL_BIND *params, uint8_t *pk, uint8
  * @param db_connect MYSQL database connection.
  * @return Error code indicating success or failure.
  */
-static errcode_t secu_key_save(uint8_t *pk, uint8_t *sk, MYSQL *db_connect)
+errcode_t secu_key_save(uint8_t *pk, uint8_t *sk, MYSQL *db_connect)
 {
     MYSQL_STMT *stmt = NULL; // Statement handle
     MYSQL_BIND params[2];    // Array to hold parameter information (pk, sk)
@@ -194,22 +194,6 @@ cleanup:
 
 
 /**
- * @brief Fill the parameter values for pk.
- * 
- * This function initializes the parameter for the public key (pk) retrieved from the database query result.
- * 
- * @param result Query results array.
- * @param pk Public key buffer.
- */
-static inline void fill_result_KEY_SELECT_PK(MYSQL_BIND *result, uint8_t *pk)
-{
-    // Parameter for public key (pk)
-    result->buffer_type = MYSQL_TYPE_BLOB;
-    result->buffer = pk;
-    result->buffer_length = crypto_box_PUBLICKEYBYTES;
-}
-
-/**
  * @brief Retrieve the public key from the database.
  * 
  * This function retrieves the public key (pk) from the database.
@@ -220,40 +204,41 @@ static inline void fill_result_KEY_SELECT_PK(MYSQL_BIND *result, uint8_t *pk)
  */
 errcode_t db_get_pk(MYSQL *db_connect, uint8_t *pk)
 {
-    MYSQL_STMT *stmt = NULL;
-    MYSQL_BIND result;
-    bzero((void *)&result, sizeof(result)); // Initialize the result structure
+  MYSQL_STMT *stmt = NULL;
+  MYSQL_BIND result;
+  bzero((void *)&result, sizeof(result)); // Initialize the result structure
 
-    // Initialize the statement handle
-    if (!(stmt = mysql_stmt_init(db_connect)))
-        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+  // Initialize the statement handle
+  if (!(stmt = mysql_stmt_init(db_connect)))
+    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-    // Prepare the statement
-    if (mysql_stmt_prepare(stmt, QUERY_SELECT_PK, QUERY_SELECT_PK_LEN) != 0)
-        return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+  // Prepare the statement
+  if (mysql_stmt_prepare(stmt, QUERY_SELECT_PK, QUERY_SELECT_PK_LEN) != 0)
+    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-    // Fill the parameter values for pk
-    fill_result_KEY_SELECT_PK(&result, pk);
+  result.buffer_type = MYSQL_TYPE_BLOB;
+  result.buffer = pk;
+  result.buffer_length = crypto_box_PUBLICKEYBYTES;
 
-    // Bind the result parameter to the statement
-    if (mysql_stmt_bind_result(stmt, &result))
-        return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+  // Bind the result parameter to the statement
+  if (mysql_stmt_bind_result(stmt, &result))
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
-    // Execute the statement
-    if (!mysql_stmt_execute(stmt))
-        goto cleanup;
+  // Execute the statement
+  if (!mysql_stmt_execute(stmt))
+    goto cleanup;
 
-    // Fetch the result
-    if (!mysql_stmt_fetch(stmt))
-        goto cleanup;
+  // Fetch the result
+  if (!mysql_stmt_fetch(stmt))
+    goto cleanup;
 
-    // Close the statement handle
-    mysql_stmt_close(stmt);
-    return __SUCCESS__;
+  // Close the statement handle
+  mysql_stmt_close(stmt);
+  return __SUCCESS__;
 
 cleanup:
-    mysql_stmt_close(stmt);
-    return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
+  mysql_stmt_close(stmt);
+  return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
 
 
@@ -415,35 +400,41 @@ inline errcode_t secu_key_del(MYSQL *db_connect)
  */
 static inline void fill_params_co_insert(MYSQL_BIND *params, co_t co_new)
 {
-    // FILE DESCRIPTOR
-    params[0].buffer_type = MYSQL_TYPE_LONG;
-    params[0].buffer = &co_new.co_fd;
-    params[0].buffer_length = sizeof co_new.co_fd;
+  // FILE DESCRIPTOR
+  params[0].buffer_type = MYSQL_TYPE_LONG;
+  params[0].buffer = &co_new.co_fd;
+  params[0].buffer_length = sizeof co_new.co_fd;
 
-    // AUTHENTICATION STEP
-    params[1].buffer_type = MYSQL_TYPE_TINY;
-    params[1].buffer = &co_new.co_auth_status;
-    params[1].buffer_length = sizeof co_new.co_auth_status;
+  // AUTHENTICATION STEP
+  params[1].buffer_type = MYSQL_TYPE_TINY;
+  params[1].buffer = &co_new.co_auth_status;
+  params[1].buffer_length = sizeof co_new.co_auth_status;
 
-    // ADDRESS FAMILY
-    params[2].buffer_type = MYSQL_TYPE_SHORT;
-    params[2].buffer = &co_new.co_af;
-    params[2].buffer_length = sizeof co_new.co_af;
+  // ADDRESS FAMILY
+  params[2].buffer_type = MYSQL_TYPE_SHORT;
+  params[2].buffer = &co_new.co_af;
+  params[2].buffer_length = sizeof co_new.co_af;
 
-    // CONNECTION PORT BIG ENDIAN
-    params[3].buffer_type = MYSQL_TYPE_SHORT;
-    params[3].buffer = &co_new.co_port;
-    params[3].buffer_length = sizeof co_new.co_port;
+  // CONNECTION PORT BIG ENDIAN
+  params[3].buffer_type = MYSQL_TYPE_SHORT;
+  params[3].buffer = &co_new.co_port;
+  params[3].buffer_length = sizeof co_new.co_port;
 
-    // CONNECTION IP ADDRESS BIG ENDIAN
-    params[4].buffer_type = MYSQL_TYPE_BLOB;
-    params[4].buffer = co_new.co_ip_addr;
-    params[4].buffer_length = SIZE_IP_ADDR;
+  // CONNECTION IP ADDRESS BIG ENDIAN
+  params[4].buffer_type = MYSQL_TYPE_BLOB;
+  params[4].buffer = co_new.co_ip_addr;
+  params[4].buffer_length = SIZE_IP_ADDR;
 
-    // Connection secret key
-    params[5].buffer_type = MYSQL_TYPE_BLOB;
-    params[5].buffer = co_new.co_key;
-    params[5].buffer_length = crypto_secretbox_KEYBYTES;
+  // Connection secret key
+  params[5].buffer_type = MYSQL_TYPE_BLOB;
+  params[5].buffer = co_new.co_key;
+  params[5].buffer_length = crypto_secretbox_KEYBYTES;
+
+  // Connection secret key
+  params[6].buffer_type = MYSQL_TYPE_BLOB;
+  params[6].buffer = co_new.co_nonce;
+  params[6].buffer_length = crypto_secretbox_NONCEBYTES;
+
 }
 
 
@@ -722,6 +713,14 @@ static inline void db_co_result_bind(MYSQL_BIND *result)
   result[7].buffer = malloc(crypto_secretbox_KEYBYTES);
   result[7].buffer_length = crypto_secretbox_KEYBYTES;
   result[7].is_null = 0;
+
+  // Column 8: co_key (BINARY)
+  result[8].buffer_type = MYSQL_TYPE_BLOB;
+  result[8].buffer = malloc(crypto_secretbox_NONCEBYTES);
+  result[8].buffer_length = crypto_secretbox_NONCEBYTES;
+  result[8].is_null = 0;
+
+
 }
 
 
@@ -745,6 +744,7 @@ static inline void db_co_res_cpy(co_t *co, MYSQL_BIND *result)
   co->co_port = *((uint16_t *)result[5].buffer);
   memcpy(co->co_ip_addr, result[6].buffer, SIZE_IP_ADDR);
   memcpy(co->co_key, result[7].buffer, crypto_secretbox_KEYBYTES);
+  memcpy(co->co_nonce, result[8].buffer, crypto_secretbox_NONCEBYTES);
 }
 
 
@@ -770,7 +770,7 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id)
 
   // Initialize the statement
   if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
   // Prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_ID, QUERY_CO_SEL_ALL_BY_ID_LEN))
@@ -859,7 +859,7 @@ errcode_t db_co_sel_by_fd(MYSQL *db_connect, co_t *co, const sockfd_t co_fd)
   MYSQL_BIND result[CO_NROWS]; // Number of columns in the result set
 
   if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
   // Prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_FD, QUERY_CO_SEL_ALL_BY_FD_LEN))
@@ -940,7 +940,7 @@ errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
   size_t i;
 
   if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
   // Prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_AUTH_STAT, QUERY_CO_SEL_ALL_BY_AUTH_STAT_LEN))
@@ -1048,7 +1048,7 @@ errcode_t db_co_sel_all_by_addr(MYSQL *db_connect, co_t **co, size_t *nrow, cons
   size_t i;
 
   if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
   // Prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_ALL_BY_ADDR, QUERY_CO_SEL_ALL_BY_ADDR_LEN))
@@ -1118,7 +1118,7 @@ cleanup:
 /// @return 
 ///     - Returns __SUCCESS__ upon successful execution.
 ///     - Returns an error code if an error occurs, such as failure to execute the query.
-errcode_t db_co_sel_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t co_fd)
+errcode_t db_co_sel_key_by_fd(MYSQL *db_connect, uint8_t *co_key, uint8_t *co_nonce, sockfd_t co_fd)
 {
   char query[QUERY_CO_SEL_KEY_BY_FD_LEN + 16];
   sprintf(query, QUERY_CO_SEL_KEY_BY_FD, co_fd);
@@ -1161,14 +1161,14 @@ errcode_t db_co_sel_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t
 /// @return 
 ///     - Returns __SUCCESS__ upon successful execution.
 ///     - Returns an error code if an error occurs, such as failure to execute the query.
-errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const uint8_t *co_ip_addr, const in_port_t co_port)
+errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, uint8_t *co_key, uint8_t *co_nonce, const uint8_t *co_ip_addr, const in_port_t co_port)
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND params[2]; // Number of columns in the result set
-  MYSQL_BIND result;
+  MYSQL_BIND result[2];
 
   if (!(stmt = mysql_stmt_init(db_connect)))
-    return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
+    return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 
   // Prepare the statement
   if (mysql_stmt_prepare(stmt, QUERY_CO_SEL_KEY_BY_ADDR, QUERY_CO_SEL_KEY_BY_ADDR_LEN))
@@ -1185,11 +1185,15 @@ errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const 
     goto cleanup;
 
   // Bind result set columns to variables
-  result.buffer_type = MYSQL_TYPE_BLOB;
-  result.buffer = co_key;
-  result.buffer_length = crypto_secretbox_KEYBYTES;
+  result[0].buffer_type = MYSQL_TYPE_BLOB;
+  result[0].buffer = co_key;
+  result[0].buffer_length = crypto_secretbox_KEYBYTES;
 
-  if (mysql_stmt_bind_result(stmt, &result))
+  result[1].buffer_type = MYSQL_TYPE_BLOB;
+  result[1].buffer = co_nonce;
+  result[1].buffer_length = crypto_secretbox_NONCEBYTES;
+
+  if (mysql_stmt_bind_result(stmt, result))
     goto cleanup;
 
   // Store the result set
@@ -1205,8 +1209,10 @@ errcode_t db_co_sel_key_by_addr(MYSQL *db_connect, const uint8_t *co_key, const 
   }
 
   // Fetch rows
-  if (!mysql_stmt_fetch(stmt))
-    memcpy((void*)co_key, (const void*)result.buffer, crypto_secretbox_KEYBYTES);
+  if (!mysql_stmt_fetch(stmt)){
+    memcpy((void*)co_key, (const void*)result[0].buffer, crypto_secretbox_KEYBYTES);
+    memcpy((void*)co_nonce, (const void*)result[1].buffer, crypto_secretbox_NONCEBYTES);
+  }
 
   // Cleanup
   bzero((void*)params, sizeof params);
@@ -1512,18 +1518,24 @@ errcode_t db_co_up_auth_stat_by_last_co(MYSQL *db_connect)
 ///
 /// @param params Pointer to an array of MYSQL_BIND structures where the parameter values will be stored.
 /// @param co_key The new connection key.
+/// @param co_nonce random bytes
 /// @param co_id The ID of the instance in the database.
-static inline void fill_params_co_up_key_by_id(MYSQL_BIND *params, const uint8_t *co_key, id64_t co_id)
+static inline void fill_params_co_up_key_by_id(MYSQL_BIND *params, const uint8_t *co_key, const uint8_t *co_nonce, id64_t co_id)
 {
   // param1: new connection key
-  params[1].buffer_type = MYSQL_TYPE_BLOB;
-  params[1].buffer = (void*)co_key;
-  params[1].buffer_length = crypto_secretbox_KEYBYTES;
+  params[0].buffer_type = MYSQL_TYPE_BLOB;
+  params[0].buffer = (void*)co_key;
+  params[0].buffer_length = crypto_secretbox_KEYBYTES;
 
-  // param2: connection id 
-  params[0].buffer_type = MYSQL_TYPE_LONGLONG;
-  params[0].buffer = (void*)&co_id;
-  params[0].buffer_length = sizeof co_id;
+  // param2: new connection nonce random bytes
+  params[1].buffer_type = MYSQL_TYPE_BLOB;
+  params[1].buffer = (void*)co_nonce;
+  params[1].buffer_length = crypto_secretbox_NONCEBYTES;
+
+  // param3: connection id 
+  params[2].buffer_type = MYSQL_TYPE_LONGLONG;
+  params[2].buffer = (void*)&co_id;
+  params[2].buffer_length = sizeof co_id;
 
 }
 
@@ -1534,16 +1546,17 @@ static inline void fill_params_co_up_key_by_id(MYSQL_BIND *params, const uint8_t
 ///
 /// @param db_connect The MYSQL database connection.
 /// @param co_key The new connection key.
+/// @param co_nonce random bytes
 /// @param co_id The ID of the instance in the database.
 ///
 /// @return 
 ///     - Returns __SUCCESS__ upon successful execution.
 ///     - Returns an error code if an error occurs, such as failure to initialize the statement,
 ///       prepare the query, bind parameters, or execute the statement.
-errcode_t db_co_up_key_by_id(MYSQL *db_connect, const uint8_t *co_key, id64_t co_id)
+errcode_t db_co_up_key_by_id(MYSQL *db_connect, const uint8_t *co_key, const uint8_t *co_nonce, id64_t co_id)
 {
   MYSQL_STMT *stmt;
-  MYSQL_BIND params[2];
+  MYSQL_BIND params[3];
 
   if (!(stmt = mysql_stmt_init(db_connect)))
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
@@ -1552,7 +1565,7 @@ errcode_t db_co_up_key_by_id(MYSQL *db_connect, const uint8_t *co_key, id64_t co
     goto cleanup;
 
   bzero((void*)params, sizeof params);
-  fill_params_co_up_key_by_id(params, co_key, co_id);
+  fill_params_co_up_key_by_id(params, co_key, co_nonce, co_id);
 
   if (mysql_stmt_bind_param(stmt, params))
     goto cleanup;
@@ -1581,18 +1594,25 @@ cleanup:
 ///
 /// @param params Pointer to an array of MYSQL_BIND structures where the parameter values will be stored.
 /// @param co_key The new connection key.
+/// @param co_nonce random bytes
 /// @param co_fd The socket file descriptor.
-static inline void fill_params_co_up_key_by_fd(MYSQL_BIND *params, const uint8_t *co_key, sockfd_t co_fd)
+static inline void fill_params_co_up_key_by_fd(MYSQL_BIND *params, const uint8_t *co_key, const uint8_t *co_nonce, sockfd_t co_fd)
 {
   // param1: new connection key
-  params[1].buffer_type = MYSQL_TYPE_BLOB;
-  params[1].buffer = (void*)co_key;
-  params[1].buffer_length = crypto_secretbox_KEYBYTES;
+  params[0].buffer_type = MYSQL_TYPE_BLOB;
+  params[0].buffer = (void*)co_key;
+  params[0].buffer_length = crypto_secretbox_KEYBYTES;
 
-  // param2: connection id 
-  params[0].buffer_type = MYSQL_TYPE_LONG;
-  params[0].buffer = (void*)&co_fd;
-  params[0].buffer_length = sizeof co_fd;
+  // param3: new connection nonce 
+  params[1].buffer_type = MYSQL_TYPE_BLOB;
+  params[1].buffer = (void*)co_nonce;
+  params[1].buffer_length = crypto_secretbox_NONCEBYTES;
+
+  // param3: connection fd 
+  params[2].buffer_type = MYSQL_TYPE_LONG;
+  params[2].buffer = (void*)&co_fd;
+  params[2].buffer_length = sizeof co_fd;
+
 }
 
 /// @brief Update connection key by file descriptor.
@@ -1601,16 +1621,17 @@ static inline void fill_params_co_up_key_by_fd(MYSQL_BIND *params, const uint8_t
 ///
 /// @param db_connect The MYSQL database connection.
 /// @param co_key The new connection key.
+/// @param co_nonce random bytes
 /// @param co_fd The socket file descriptor.
 ///
 /// @return 
 ///     - Returns __SUCCESS__ upon successful execution.
 ///     - Returns an error code if an error occurs, such as failure to initialize the statement,
 ///       prepare the query, bind parameters, or execute the statement.
-errcode_t db_co_up_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t co_fd)
+errcode_t db_co_up_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, const uint8_t *co_nonce, sockfd_t co_fd)
 {
   MYSQL_STMT *stmt;
-  MYSQL_BIND params[2];
+  MYSQL_BIND params[3];
 
   if (!(stmt = mysql_stmt_init(db_connect)))
     return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
@@ -1619,7 +1640,7 @@ errcode_t db_co_up_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t 
     goto cleanup;
 
   bzero((void*)params, sizeof params);
-  fill_params_co_up_key_by_fd(params, co_key, co_fd);
+  fill_params_co_up_key_by_fd(params, co_key, co_nonce, co_fd);
 
   if (mysql_stmt_bind_param(stmt, params))
     goto cleanup;

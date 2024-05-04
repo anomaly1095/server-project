@@ -53,8 +53,8 @@ errcode_t secu_check_init_cred(const uint8_t *pass)
   uint8_t c1[crypto_hash_sha512_BYTES];
   uint8_t c2[crypto_hash_sha512_BYTES];
   
-  if (crypto_hash_sha512(c1, pass, strlen(pass)))
-    return LOG(SECU_LOG_PATH, E_SHA512, E_SHA512);
+  if (crypto_hash_sha512(c1, pass, strlen((const char *)pass)))
+    return LOG(SECU_LOG_PATH, E_SHA512, E_SHA512_M);
   
   if (get_auth_key(c2))
     return E_AUTHKEY;
@@ -155,35 +155,37 @@ inline errcode_t secu_asymmetric_decrypt(const uint8_t *pk, const uint8_t *sk, v
 
 /**
  * @brief Encrypts a message 'm' of length 'mlen' using the symmetric key 'key' obtained from the client connection
- *  and stores the cipher in 'c'. This function does not use a nonce.
+ *  and the nonce set to him and stores the cipher in 'c'. This function does not use a nonce.
  * 
  * @param key Symmetric key obtained from the client connection.
+ * @param n random nonce common between user and client.
  * @param c Buffer to contain the cipher.
  * @param m Message to encrypt.
  * @param mlen Length of the message to encrypt.
  * @return Error code indicating the success or failure of the encryption process.
  */
-inline errcode_t secu_symmetric_encrypt(const uint8_t *key, uint8_t *c, const void *m, size_t mlen)
+errcode_t secu_symmetric_encrypt(const uint8_t *key, const uint8_t *n, uint8_t *c, const void *m, size_t mlen)
 {
   const uint8_t *__m = (const uint8_t *)m;
-  if (crypto_secretbox_easy(c, __m, mlen, NULL, key))
+  if (crypto_secretbox_easy(c, __m, mlen, n, key))
     return LOG(SECU_LOG_PATH, E_SYMM_ENCRYPT, E_SYMM_ENCRYPT_M);
   return __SUCCESS__;
 }
 
 /**
- * @brief Decrypts a cipher 'c' of length 'clen' using the symmetric key 'key', storing the result in 'm'. This function does not use a nonce.
+ * @brief Decrypts a cipher 'c' of length 'clen' using the symmetric key 'key' and the nonce set to the, storing the result in 'm'. This function does not use a nonce.
  * 
  * @param key Symmetric key specific to this connection.
+ * @param n random nonce common between user and client.
  * @param m Buffer to store the decrypted message.
  * @param c Cipher to decrypt.
  * @param clen Length of the cipher to decrypt.
  * @return Error code indicating the success or failure of the decryption process.
  */
-inline errcode_t secu_symmetric_decrypt(const uint8_t *key, void *m, const uint8_t *c, size_t clen)
+errcode_t secu_symmetric_decrypt(const uint8_t *key, const uint8_t *n, void *m, const uint8_t *c, size_t clen)
 {
   uint8_t *__m = (uint8_t *)m;
-  if (crypto_secretbox_open_easy(__m, c, clen, NULL, key))
+  if (crypto_secretbox_open_easy(__m, c, clen, n, key))
     return LOG(SECU_LOG_PATH, E_SYMM_DECRYPT, E_SYMM_DECRYPT_M);
   return __SUCCESS__;
 }

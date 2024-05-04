@@ -2,35 +2,10 @@
 
 #ifndef __THREADS_H
 #define __THREADS_H     1
+#include ".config.h"
 #include "base.h"
 
-///@brief developement mode (small values and only ipv4) mainthread + 1 extra thread
-#if (DEV_MODE && !TEST_MODE && !PROD_MODE) // developement mode
 
-  #define SERVER_THREAD_NO    1U // change this base on system limit and testings
-  #define SERVER_BACKLOG      16U    // number of clients allowed
-  #define CLIENTS_PER_THREAD  (SERVER_BACKLOG / SERVER_THREAD_NO)
-
-///@brief ipv4 || ipv6 || domain name + system limit backlog
-/// system limit 1024 __fds || mainthread + 2 extra thread
-#elif (!DEV_MODE && TEST_MODE && !PROD_MODE) // testing mode
-
-  #define SERVER_THREAD_NO    2U // change this base on system limit and testings
-  #define SERVER_BACKLOG      1024U    // number of clients allowed
-  #define CLIENTS_PER_THREAD  (SERVER_BACKLOG / SERVER_THREAD_NO)
-
-
-///@brief we go full throttle ipv4 || ipv6 || domain name 
-/// encrease system limit backlog by 4 ||  main thread + 4 extra threads 
-#elif (!DEV_MODE && !TEST_MODE && PROD_MODE) // production mode
-
-  #define SERVER_THREAD_NO    4U
-  #define SERVER_BACKLOG      4096U    // number of clients allowed
-  #define CLIENTS_PER_THREAD  (SERVER_BACKLOG / SERVER_THREAD_NO)
-  
-#else
-  #error "Only one Mode can be chosen out of dev || test || prod\n"
-#endif
 
 #if (SERVER_THREAD_NO > 32U)
 #error "Max number of threads reached"
@@ -64,7 +39,6 @@
   {
     sockaddr_t  server_addr;    // no race condition issues with these 2 we will only perform read on them
     sockfd_t    server_fd;      // no race condition issues with these 2 we will only perform read on them
-    co_t        **co_head;
     pollfd_t    total_cli_fds[SERVER_THREAD_NO][SERVER_BACKLOG]; // THIS WILL REQUIRE GOOD HANDLING
     MYSQL      *db_connect;     // all threads will access the db concurrently but it is the db that handles concurrency
     _Atomic uint32_t    thread_id;  // thread identifier

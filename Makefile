@@ -4,7 +4,7 @@ DEBUG_FLAGS = -g -Wall
 PROD_FLAGS = -s
 THREAD_FLAGS = -lpthread
 SODIUM_FLAGS = -lsodium
-
+MYSQL_FLAGS = -lmysqlclient
 # Define source directory
 SRC = src
 
@@ -14,21 +14,21 @@ BIN = bin
 # Build all the executables and link in production mode
 all-prod: main-prod init-prod network-prod request-prod database-prod security-prod base-prod
 	@echo "Linking final app"
-	gcc -o $(BIN)/server $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(PROD_FLAGS)
+	gcc -o $(BIN)/server $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(PROD_FLAGS) $(MYSQL_FLAGS) $(SODIUM_FLAGS) $(THREAD_FLAGS)
 	@chmod 100 $(BIN)/server
 	@echo "done"
 
 # Build all the executables and link in debug mode
 all-debug: main-debug init-debug network-debug request-debug database-debug security-debug base-debug
 	@echo "Linking final app"
-	gcc -o $(BIN)/final $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(DEBUG_FLAGS)
+	gcc -o $(BIN)/final $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(DEBUG_FLAGS) $(MYSQL_FLAGS) $(SODIUM_FLAGS) $(THREAD_FLAGS)
 	@chmod 100 $(BIN)/final
 	@echo "done"
 
 # Compile main.c
 main-prod: $(SRC)/main.c
 	@echo "Compiling main file"
-	gcc $(DEBUG_FLAGS) -c $(SRC)/main.c -o $(BIN)/main.o
+	gcc $(PROD_FLAGS) -c $(SRC)/main.c -o $(BIN)/main.o
 
 # Compile main.c in debug mode
 main-debug: $(SRC)/main.c
@@ -38,7 +38,7 @@ main-debug: $(SRC)/main.c
 # Compile init.c
 init-prod: $(SRC)/init.c
 	@echo "Compiling init file"
-	gcc $(DEBUG_FLAGS) -c $(SRC)/init.c -o $(BIN)/init.o
+	gcc $(PROD_FLAGS) -c $(SRC)/init.c -o $(BIN)/init.o
 
 # Compile init.c in debug mode
 init-debug: $(SRC)/init.c
@@ -48,7 +48,7 @@ init-debug: $(SRC)/init.c
 # Compile network.c
 network-prod: $(SRC)/network.c
 	@echo "Compiling network file"
-	gcc $(DEBUG_FLAGS) -c $(SRC)/network.c -o $(BIN)/network.o
+	gcc $(PROD_FLAGS) -c $(SRC)/network.c -o $(BIN)/network.o
 
 # Compile network.c in debug mode
 network-debug: $(SRC)/network.c
@@ -58,7 +58,7 @@ network-debug: $(SRC)/network.c
 # Compile request.c
 request-prod: $(SRC)/request.c
 	@echo "Compiling request file"
-	gcc $(DEBUG_FLAGS) -c $(SRC)/request.c -o $(BIN)/request.o
+	gcc $(PROD_FLAGS) -c $(SRC)/request.c -o $(BIN)/request.o
 
 # Compile request.c in debug mode
 request-debug: $(SRC)/request.c
@@ -68,7 +68,7 @@ request-debug: $(SRC)/request.c
 # Compile database.c
 database-prod: $(SRC)/database.c
 	@echo "Compiling database file"
-	gcc $(DEBUG_FLAGS) -c $(SRC)/database.c -o $(BIN)/database.o
+	gcc $(PROD_FLAGS) -c $(SRC)/database.c -o $(BIN)/database.o
 
 # Compile database.c in debug mode
 database-debug: $(SRC)/database.c
@@ -78,7 +78,7 @@ database-debug: $(SRC)/database.c
 # Compile security.c
 security-prod: $(SRC)/security.c
 	@echo "Compiling security file"
-	gcc $(DEBUG_FLAGS) -c $(SRC)/security.c -o $(BIN)/security.o
+	gcc $(PROD_FLAGS) -c $(SRC)/security.c -o $(BIN)/security.o
 
 # Compile security.c in debug mode
 security-debug: $(SRC)/security.c
@@ -88,7 +88,7 @@ security-debug: $(SRC)/security.c
 # Compile base.c
 base-prod: $(SRC)/base.c
 	@echo "Compiling base file"
-	gcc $(DEBUG_FLAGS) -c $(SRC)/base.c -o $(BIN)/base.o
+	gcc $(PROD_FLAGS) -c $(SRC)/base.c -o $(BIN)/base.o
 
 # Compile base.c in debug mode
 base-debug: $(SRC)/base.c

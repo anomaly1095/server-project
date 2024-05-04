@@ -6,45 +6,6 @@
 #include "request.h"
 
 
-#define DATA_AVAILABLE      1
-#define DATA_UNAVAILABLE    0
-
-
-//===============================================
-//              ----MODES----
-//===============================================
-
-
-///@brief developement mode (small values and only ipv4) mainthread + 1 extra thread
-#if (DEV_MODE && !TEST_MODE && !PROD_MODE) // developement mode
-
-  #define SERVER_DOMAIN       "127.0.0.1"
-  #define SERVER_PORT         6969U  // host byte order
-  #define SERVER_SOCK_TYPE    SOCK_STREAM | SOCK_NONBLOCK
-  #define SERVER_SOCK_PROTO   IPPROTO_TCP
-
-///@brief ipv4 || ipv6 || domain name + system limit backlog
-/// system limit 1024 __fds || mainthread + 2 extra thread
-#elif (!DEV_MODE && TEST_MODE && !PROD_MODE) // testing mode
-  
-  #define SERVER_DOMAIN       "192.168.1.78"
-  #define SERVER_PORT         6969U    // host byte order
-  #define SERVER_SOCK_TYPE    SOCK_STREAM | SOCK_NONBLOCK
-  #define SERVER_SOCK_PROTO   IPPROTO_TCP
-
-///@brief we go full throttle ipv4 || ipv6 || domain name 
-/// encrease system limit backlog by 4 ||  main thread + 4 extra threads 
-#elif (!DEV_MODE && !TEST_MODE && PROD_MODE) // production mode
-
-  #define SERVER_DOMAIN       "41.228.24.124" // change to domain name
-  #define SERVER_PORT         6969U  // host byte order
-  #define SERVER_SOCK_TYPE    SOCK_STREAM | SOCK_NONBLOCK
-  #define SERVER_SOCK_PROTO   IPPROTO_TCP
-
-#else
-  #error "Only one Mode can be chosen out of dev || test || prod\n"
-#endif
-
 /// @brief if test mode or production mode are enabled 
 /// we can type an IPV6 or a domain name thanks to DNS lookups
 #if (TEST_MODE || PROD_MODE)
@@ -99,7 +60,6 @@ int32_t __KEEPCNTR  = 5;  // 5 repetitions
 #define SET__IDLETIME(fd)  (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE,  &__IDLETIME,  sizeof(int)))
 #define SET__INTRLTIME(fd) (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &__INTRLTIME, sizeof(int)))
 #define SET__KEEPCNTR(fd)  (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT,   &__KEEPCNTR,  sizeof(int)))
-#define GET__MSS(clifd, mss, mss_len) (getsockopt(clifd, IPPROTO_TCP, TCP_MAXSEG, &mss, &mss_len))
 
 
 #define CONN_POLL_TIMEOUT -1  // poll untill new connection received
@@ -124,17 +84,6 @@ errcode_t net_server_setup(sockaddr_t *server_addr, sockfd_t *server_fd);
 
 
 /**
- * @brief Initializes pollfd structures for incoming data.
- * 
- * This function initializes the pollfd structures for incoming data. It sets the file descriptors to -1
- * so that they are ignored by poll.
- * 
- * @param total_cli__fds All file descriptors available across all threads.
- */
-inline void net_init_clifd(pollfd_t **total_cli__fds);
-
-
-/**
  * @brief Event loop for handling incoming connections to the server (executed by the main thread).
  * 
  * This function continuously polls for events on the server file descriptor and handles incoming connections.
@@ -143,6 +92,7 @@ inline void net_init_clifd(pollfd_t **total_cli__fds);
  * @return __SUCCESS__ on successful execution, D_NET_EXIT if an error occurs.
  */
 errcode_t net_connection_handler(thread_arg_t *thread_arg);
+
 
 /**
  * @brief Handler for incoming client data (called by the additionally created threads).

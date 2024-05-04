@@ -22,7 +22,7 @@ inline void get_time(char *datetime)
  * @param datetime Formatted datetime string.
  * @return __SUCCESS__ if the log entry is written successfully, or an error code if writing fails.
  */
-static inline errcode_t __logw(FILE *logf, const char *log_path, errcode_t __err, const char *__msg, const char datetime[DATETIME_MAX_LENGTH])
+static inline errcode_t __logw(FILE *logf, const char *log_path, errcode_t __err, const char *__msg, const char *datetime)
 {
   logf = fopen(log_path, "a");
   if (!logf) return ELOG;
@@ -71,6 +71,21 @@ inline errcode_t get_pass(char *pass)
   return __SUCCESS__;
 }
 
+/**
+ * @brief Check if a character is a valid ASCII printable character.
+ * 
+ * @param c Character to check.
+ * @return __SUCCESS__ if the character is valid, or an error code if it is invalid.
+ */
+static inline errcode_t pass_check_char(const char c)
+{
+  // Check if the character is within the valid ASCII printable range
+  if (c < 32 || c > 126)
+    return LOG(SECU_LOG_PATH, EINVALID_CHAR, EINVALID_CHAR_M);
+
+  return __SUCCESS__;
+}
+
 
 /**
  * @brief Check the validity of a passphrase.
@@ -95,18 +110,4 @@ errcode_t check_pass(const char *pass)
 }
 
 
-/**
- * @brief Check if a character is a valid ASCII printable character.
- * 
- * @param c Character to check.
- * @return __SUCCESS__ if the character is valid, or an error code if it is invalid.
- */
-static inline errcode_t pass_check_char(const char c)
-{
-  // Check if the character is within the valid ASCII printable range
-  if (c < 32 || c > 126)
-    return LOG(SECU_LOG_PATH, EINVALID_CHAR, EINVALID_CHAR_M);
-
-  return __SUCCESS__;
-}
 

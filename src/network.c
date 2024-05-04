@@ -164,16 +164,20 @@ static errcode_t net_co_create(co_t *co_new, sockfd_t new_cli_fd, sockaddr_t new
   memcpy((void*)&co_new->co_port, (const void*)new_addr.sa_data, sizeof(in_port_t));
 
   // Copy IP address
-  if (new_addr.sa_family == AF_INET)
-    memcpy(co_new->co_ip_addr, &((struct sockaddr_in*)&new_addr)->sin_addr, sizeof(struct in_addr));
-  else if (new_addr.sa_family == AF_INET6)
-    memcpy(co_new->co_ip_addr, &((struct sockaddr_in6*)&new_addr)->sin6_addr, sizeof(struct in6_addr));
-  
-  // Clear the key
+  if (new_addr.sa_family == AF_INET) {
+    struct sockaddr_in *ipv4_addr = (struct sockaddr_in *)&new_addr;
+    memcpy((void*)co_new->co_ip_addr, &ipv4_addr->sin_addr, sizeof(struct in_addr));
+  } else if (new_addr.sa_family == AF_INET6) {
+    struct sockaddr_in6 *ipv6_addr = (struct sockaddr_in6 *)&new_addr;
+    memcpy((void*)co_new->co_ip_addr, &ipv6_addr->sin6_addr, sizeof(struct in6_addr));
+  }
+
   bzero((void*)co_new->co_key, crypto_secretbox_KEYBYTES);
-  
+  bzero((void*)co_new->co_nonce, crypto_secretbox_NONCEBYTES);  
+
   return __SUCCESS__;
 }
+
 
 
 
@@ -269,18 +273,15 @@ static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, MYSQL
         return __FAILURE__;
       
       // Save the connection instance to the database Connection table
-      if (db_co_insert(db_connect, co_new) != __SUCCESS__) {
+      if (db_co_insert(db_connect, co_new) != __SUCCESS__)
         return __FAILURE__;
 
       return __SUCCESS__;
     }
   }
-  
   // If the maximum number of file descriptors per thread is reached
   return MAX_FDS_IN_THREAD;
 }
-
-
 
 
 /**
@@ -297,16 +298,14 @@ static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, MYSQL
  */
 static inline errcode_t net_add_clifd(thread_arg_t *thread_arg, sockfd_t new_cli_fd, sockaddr_t new_addr, socklen_t addr_len)
 {
-  for (size_t i = 0; i < SERVER_THREAD_NO; i++) {
-    if (net_add_clifd_to_thread(thread_arg->total_cli_fds[i], thread_arg->db_connect, new_cli_fd, new_addr, addr_len)) {
+  for (size_t i = 0; i < SERVER_THREAD_NO; i++){
+    if (net_add_clifd_to_thread(thread_arg->total_cli_fds[i], thread_arg->db_connect, new_cli_fd, new_addr, addr_len))
       // Log error if maximum number of file descriptors is reached
       return LOG(NET_LOG_PATH, MAX_FDS_IN_PROGRAM, MAX_FDS_IN_PROGRAM_M);
-    }
   }
   
   return __SUCCESS__;
 }
-
 
 
 /**
@@ -493,7 +492,9 @@ static errcode_t net_handle_send_err(thread_arg_t *thread_arg, size_t thread_ind
   switch (err) {
     case EWOULDBLOCK || EAGAIN:
       return __SUCCESS__;
-    
+    case EPIPE:
+      CLI_DC_XX();
+      return LOG(NET_LOG_PATH, __SUCCESS__, EPIPE_M);
     case ECONNREFUSED:
       CLI_DC_XX();
       return LOG(NET_LOG_PATH, __SUCCESS__, ECONNREFUSED_M2);
@@ -566,34 +567,41 @@ static inline errcode_t sendall(thread_arg_t *thread_arg, size_t thread_index, s
 {
   ssize_t total_sent = 0;
   const char *ptr = buf;
-
-  while (total_sent < n) {
-    ssize_t sent = send(thread_arg->total_cli_fds[thread_index][client_index].fd, ptr + total_sent, n - total_sent, MSG_DONTWAIT | MSG_OOB);
-
-    if (sent == -1) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+  ssize_t sent = 0;
+  while (total_sent < n)
+  {
+    sent = send(thread_arg->total_cli_fds[thread_index][client_index].fd, ptr + total_sent, n - total_sent, MSG_DONTWAIT | MSG_OOB);
+    if (sent == -1)
+    {
+      if (errno == EAGAIN || errno == EWOULDBLOCK)
+      {
         // Socket buffer is full, try again later
         continue;
       }
-      if (net_handle_send_err(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index, errno)) {
+      else if (net_handle_send_err(thread_arg, thread_index, client_index, errno))
+      {
         pthread_exit(NULL);
-      } else {
+      }
+      else
+      {
         return E_SEND_FAILED;
       }
     }
 
-    if (sent == 0) {
+    if (sent == 0)
+    {
       // Socket closed unexpectedly
-      if (net_handle_send_err(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index, EPIPE)) {
+      if (net_handle_send_err(thread_arg, thread_index, client_index, EPIPE))
+      {
         pthread_exit(NULL);
-      } else {
+      } 
+      else
+      {
         return E_SEND_FAILED;
       }
     }
-
     total_sent += sent;
   }
-
   return __SUCCESS__;
 }
 
@@ -616,7 +624,7 @@ static errcode_t net_data_available(thread_arg_t *thread_arg, size_t thread_inde
   socklen_t mss_len = sizeof(mss);
   
   // Retrieve the Maximum Segment Size (MSS) for the TCP connection
-  if (GET_MSS(thread_arg->total_cli_fds[thread_index][client_index].fd, &mss, &mss_len) == -1)
+  if (getsockopt(thread_arg->total_cli_fds[thread_index][client_index].fd, IPPROTO_TCP, TCP_MAXSEG, &mss, &mss_len) == -1)
     return DATA_UNAVAILABLE; // Failed to retrieve MSS
   
   // Allocate memory for the buffer based on MSS
@@ -632,7 +640,7 @@ static errcode_t net_data_available(thread_arg_t *thread_arg, size_t thread_inde
     free(buf);
     buf = NULL;
     err = errno;
-    if (net_handle_recv_err(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index, err))
+    if (net_handle_recv_err(thread_arg, thread_index, client_index, err))
       pthread_exit(NULL); // Critical error, terminate thread
     return DATA_UNAVAILABLE;
   case 0: // Client disconnected
@@ -670,19 +678,17 @@ static inline void net_check_clifds(thread_arg_t *thread_arg, size_t thread_inde
       free(buffer);
     
     // Check if data is available on the client's receive buffer
-    if (net_data_available(thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index, buffer))
+    if (net_data_available(thread_arg, thread_index, client_index, buffer))
     {
       if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLPRI) // client needs to authenticate
       {
         // Call request module to handle priority requests (e.g., authentication)
-        if (req_pri_handle(buffer, thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index))
-          return __FAILURE__;
+        req_pri_handle(buffer, thread_arg, thread_index, client_index);
       }
       else if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLIN) // client authenticated can perform I/O
       {
         // Call request module to parse and handle regular data reception
-        if (req_handle(buffer, thread_arg->db_connect, thread_arg->total_cli_fds[thread_index], client_index))
-          return __FAILURE__;
+        req_handle(buffer, thread_arg, thread_index, client_index);
       }
     }
     ++client_index;
@@ -799,6 +805,76 @@ errcode_t net_send_pk(thread_arg_t *thread_arg, size_t thread_index, size_t clie
 
 
 /**
+ * @brief Read and extract the encrypted key from a network request.
+ * 
+ * This function reads the length of the encrypted key from the request,
+ * checks if it matches the expected size, and then extracts the encrypted key data.
+ * 
+ * @param req Pointer to the binary stream of data coming from the network.
+ * @param keys Pointer to the `sec_keys_t` structure where the extracted key will be stored.
+ * @param offset Pointer to a variable holding the current offset in the request stream.
+ *               This will be updated to the new offset after processing the key.
+ * @return An error code indicating success or failure of the operation.
+ *         Possible error codes include EREQ_LEN if the length of the key is incorrect,
+ *         and EREQ_LEN_M if there is an error reading the request.
+ */
+static inline errcode_t read_enc_key(const void *req, sec_keys_t *keys, size_t *offset)
+{
+  uint32_t len_enc_key;
+  // Copy the length of the segment offset by 4 bytes that are used for the reqcode
+  if (!memcpy((void*)&len_enc_key, req + *offset, 4))
+    return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
+
+  // Check that the length of the data segment corresponds to the expected size
+  if (len_enc_key != ENCRYPTED_KEY_SIZE)
+    return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
+  
+  *offset += 4;
+
+  // Move the encrypted data offset by 8 bytes that are used for the reqcode and seglen
+  if (!memmove((void*)keys->enc_key, req + *offset, ENCRYPTED_KEY_SIZE))
+    return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
+  *offset += ENCRYPTED_KEY_SIZE;
+  return __SUCCESS__;
+}
+
+/**
+ * @brief Read and extract the encrypted nonce from a network request.
+ * 
+ * This function reads the length of the encrypted nonce from the request,
+ * checks if it matches the expected size, and then extracts the encrypted nonce data.
+ * 
+ * @param req Pointer to the binary stream of data coming from the network.
+ * @param keys Pointer to the `sec_keys_t` structure where the extracted nonce will be stored.
+ * @param offset Pointer to a variable holding the current offset in the request stream.
+ *               This will be updated to the new offset after processing the nonce.
+ * @return An error code indicating success or failure of the operation.
+ *         Possible error codes include EREQ_LEN if the length of the nonce is incorrect,
+ *         and EREQ_LEN_M if there is an error reading the request.
+ */
+static inline errcode_t read_enc_nonce(const void *req, sec_keys_t *keys, size_t *offset)
+{
+  uint32_t len_enc_nonce;
+  // Copy the length of the segment going from offset 
+  if (!memcpy((void*)&len_enc_nonce, req + *offset, 4))
+    return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
+  
+  // Check that the length of the data segment corresponds to the expected size
+  if (len_enc_nonce != ENCRYPTED_NONCE_SIZE)
+    return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
+
+  *offset += 4;
+  // Move the encrypted nonce data
+  if (!memmove((void*)keys->enc_nonce, req + *offset, ENCRYPTED_NONCE_SIZE))
+    return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
+
+  *offset += ENCRYPTED_NONCE_SIZE;
+
+  return __SUCCESS__;
+}
+
+
+/**
  * @brief Receive the symmetric key generated by the client and decrypt it.
  * 
  * This function:
@@ -813,38 +889,30 @@ errcode_t net_send_pk(thread_arg_t *thread_arg, size_t thread_index, size_t clie
  * @param client_index Index of the client.
  * @return Error code indicating success or failure.
  */
-errcode_t net_recv_key(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+errcode_t net_recv_key(void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
-  uint32_t len_data1;
-  uint8_t enc_key[ENCRYPTED_KEY_SIZE]; // size of asymmetrically encrypted symmetric key 
-  uint8_t dec_key[crypto_secretbox_KEYBYTES];
-  uint8_t pk[crypto_box_PUBLICKEYBYTES];
-  uint8_t sk[crypto_box_SECRETKEYBYTES];
-  
-  // Clear memory buffers
-  bzero((void*)enc_key, ENCRYPTED_KEY_SIZE);
-  bzero((void*)dec_key, crypto_secretbox_KEYBYTES);
-  bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
-  bzero((void*)sk, crypto_box_SECRETKEYBYTES);
+  sec_keys_t keys; // struct containing all the memory required to store the keys 
+  size_t offset = 4; // request stream offset starts allways at 4 as it is the req code provided in each data received an used by the request module
+  bzero((void*)&keys, sizeof keys);
 
-  // Copy the length of the data offset by 4 bytes that are used for the reqcode
-  if (!memcpy((void*)&len_data1, req + 4, 4))
-    return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
-  
-  // Check that the length of the data segment corresponds to the expected size
-  if (len_data1 != ENCRYPTED_KEY_SIZE)
-    return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
-  
-  // Move the encrypted data offset by 8 bytes that are used for the reqcode and seglen
-  if (!memmove((void*)enc_key, req + 8, ENCRYPTED_KEY_SIZE))
+  /// parse the encrypted key from the request stream
+  if (read_enc_key(req, &keys, &offset))
+    goto __failure;
+
+  /// parse the encrypted nonce from the request stream
+  if (read_enc_nonce(req, &keys, &offset))
     goto __failure;
 
   // Fetch asymmetric server keys from the database
-  if (db_get_pk_sk(thread_arg->db_connect, pk, sk))
+  if (db_get_pk_sk(thread_arg->db_connect, keys.pk, keys.sk))
     goto __failure;
-  
+
   // Decrypt the key
-  if (secu_asymmetric_decrypt(pk, sk, enc_key, dec_key, ENCRYPTED_KEY_SIZE))
+  if (secu_asymmetric_decrypt(keys.pk, keys.sk, keys.dec_key, keys.enc_key, ENCRYPTED_KEY_SIZE))
+    goto __failure;
+
+  // Decrypt the nonce
+  if (secu_asymmetric_decrypt(keys.pk, keys.sk, keys.dec_nonce, keys.enc_nonce, ENCRYPTED_NONCE_SIZE))
     goto __failure;
 
   // Update connection authentication status flag
@@ -852,23 +920,15 @@ errcode_t net_recv_key(const void *req, thread_arg_t *thread_arg, size_t thread_
     goto __failure;
 
   // Update the key in the database
-  if (db_co_up_key_by_fd(thread_arg->db_connect, (const)dec_key, thread_arg->total_cli_fds[thread_index][client_index].fd))
+  if (db_co_up_key_by_fd(thread_arg->db_connect, keys.dec_key, keys.dec_nonce, thread_arg->total_cli_fds[thread_index][client_index].fd))
     goto __failure;
 
   // Reset all security memory to 0x0
-  bzero((void*)enc_key, ENCRYPTED_KEY_SIZE);
-  bzero((void*)dec_key, crypto_secretbox_KEYBYTES);
-  bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
-  bzero((void*)sk, crypto_box_SECRETKEYBYTES);
+  bzero((void*)&keys, sizeof keys);
   return __SUCCESS__;
-
 __failure:
   // Reset all security memory to 0x0
-  bzero((void*)enc_key, ENCRYPTED_KEY_SIZE);
-  bzero((void*)dec_key, crypto_secretbox_KEYBYTES);
-  bzero((void*)pk, crypto_box_PUBLICKEYBYTES);
-  bzero((void*)sk, crypto_box_SECRETKEYBYTES);
-  
+  bzero((void*)&keys, sizeof keys);
   return LOG(NET_LOG_PATH, E_PHASE2_AUTH, E_PHASE2_AUTH_M);
 }
 
@@ -885,41 +945,45 @@ __failure:
  * @param thread_arg Pointer to the thread_arg_t structure.
  * @param thread_index Index of the thread.
  * @param client_index Index of the client.
- * @param packet Pointer to the ping message data.
- * @param packet_len Length of the ping message data.
  * @return Error code indicating success or failure.
  */
-errcode_t net_send_ping(thread_arg_t *thread_arg, size_t thread_index, size_t client_index, const void *packet, const size_t packet_len)
+errcode_t net_send_auth_ping(thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
-  uint8_t key[crypto_secretbox_KEYBYTES];
-  uint8_t c[crypto_secretbox_MACBYTES + packet_len]; // Buffer for encrypted message
+  uint8_t key[crypto_secretbox_KEYBYTES];  // Encryption key retrieved from the database
+  uint8_t nonce[crypto_secretbox_NONCEBYTES];  // Nonce retrieved from the database
+  uint8_t c[crypto_secretbox_MACBYTES + PING_HELLO_LEN];  // Buffer for encrypted message
 
-  // Retrieve connection object including the symmetric key from the database
-  if (db_co_sel_key_by_fd(thread_arg->db_connect, key, thread_arg->total_cli_fds[thread_index][client_index].fd))
-  {
-    bzero(key, crypto_secretbox_KEYBYTES);
-    return __FAILURE__;
-  }
+  // Retrieve connection object including the symmetric key and nonce from the database
+  if (db_co_sel_key_by_fd(thread_arg->db_connect, key, nonce, thread_arg->total_cli_fds[thread_index][client_index].fd))
+    goto __failure;
 
-  // Encrypt the ping message
-  if (secu_symmetric_encrypt(key, c, packet, packet_len))
-  {
-    bzero(key, crypto_secretbox_KEYBYTES);
-    return __FAILURE__;
-  }  
+  // Encrypt the ping message using the symmetric key and nonce
+  if (secu_symmetric_encrypt(key, nonce, c, PING_HELLO, PING_HELLO_LEN))
+    goto __failure;
 
-  bzero(key, crypto_secretbox_KEYBYTES);
+  // Send the encrypted ping message to the client
+  if (sendall(thread_arg, thread_index, client_index, c, crypto_secretbox_MACBYTES + PING_HELLO_LEN))
+    goto __failure;
 
-  // Send the encrypted ping message
-  if (sendall(thread_arg, thread_index, client_index, c, crypto_secretbox_MACBYTES))
-    return LOG(NET_LOG_PATH, E_SEND_PING, E_SEND_PING_M);
-  
-  // Update connection status to indicate that ping was sent
+  // Update connection status in the database to indicate that the ping was sent
   if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_SENT_PING, thread_arg->total_cli_fds[thread_index][client_index].fd))
-    return LOG(NET_LOG_PATH, E_SEND_PING, E_SEND_PING_M);
+    goto __failure;
+
+  // Clear sensitive data from memory
+  bzero(key, crypto_secretbox_KEYBYTES);
+  bzero(nonce, crypto_secretbox_NONCEBYTES);
 
   return __SUCCESS__;
+  
+__failure:
+  // Clear sensitive data from memory in case of failure
+  bzero(key, crypto_secretbox_KEYBYTES);
+  bzero(nonce, crypto_secretbox_NONCEBYTES);
+
+  // Return an error code indicating the failure
+  return LOG(NET_LOG_PATH, E_SEND_PING, E_SEND_PING_M);
 }
+
 
 
 /**
@@ -937,48 +1001,49 @@ errcode_t net_send_ping(thread_arg_t *thread_arg, size_t thread_index, size_t cl
  * @param client_index Index of the client.
  * @return Error code indicating success or failure.
  */
-errcode_t net_recv_auth_ping(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+errcode_t net_recv_auth_ping(void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
-  uint8_t key[crypto_secretbox_KEYBYTES];
-  uint8_t *correct_ping = PING_HELLO; // Correct ping message
-  uint8_t m[PING_HELLO_LEN]; // Buffer for decrypted message
-  uint32_t seglen; // Length of data segment
-
+  uint8_t key[crypto_secretbox_KEYBYTES];   // Encryption key retrieved from the database
+  uint8_t nonce[crypto_secretbox_NONCEBYTES];  // Nonce retrieved from the database
+  uint8_t m[PING_HELLO_LEN];   // Buffer for decrypted message
+  uint32_t seglen;   // Length of data segment
+ 
   // Check length of data segment: offset by 4 for reqcode
   if (!memcpy((void*)&seglen, req + 4, 4))
     return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
   
+  // Ensure that the length of the data segment matches the expected length for a ping message
   if (seglen != PING_HELLO_LEN)
     return LOG(NET_LOG_PATH, EREQ_LEN, EREQ_LEN_M);
 
-
-  if (db_co_sel_key_by_fd(thread_arg->db_connect, key, thread_arg->total_cli_fds[thread_index][client_index].fd))
-  {
-    bzero(key, crypto_secretbox_KEYBYTES);
-    return __FAILURE__;
-  }
+  // Retrieve the encryption key and nonce associated with the client's file descriptor from the database
+  if (db_co_sel_key_by_fd(thread_arg->db_connect, key, nonce, thread_arg->total_cli_fds[thread_index][client_index].fd))
+    goto __failure;
   
-  // Decrypt the ping message
-  if (secu_symmetric_decrypt(key, m, req + 8, PING_HELLO_LEN + crypto_secretbox_MACBYTES))
-  {
-    bzero(key, crypto_secretbox_KEYBYTES);
-    return __FAILURE__;
-  }  
-
-  // Free  
-  bzero(key, crypto_secretbox_KEYBYTES);
+  // Decrypt the received ping message
+  if (secu_symmetric_decrypt(key, nonce, m, req + 8, PING_HELLO_LEN + crypto_secretbox_MACBYTES))
+    goto __failure;
 
   // Check if the decrypted message matches the correct ping message
-  if (memcmp(m, correct_ping, PING_HELLO_LEN))
-    return LOG(NET_LOG_PATH, E_INVALID_PING, E_INVALID_PING_M);
+  if (memcmp(m, PING_HELLO, PING_HELLO_LEN))
+    goto __failure;
   
-  // Change connection authentication status in the database
+  // Change connection authentication status in the database to indicate that the client is authenticated
   if (db_co_up_auth_stat_by_fd(thread_arg->db_connect, CO_FLAG_AUTH, thread_arg->total_cli_fds[thread_index][client_index].fd))
-    return __FAILURE__;
+    goto __failure;
 
-  // change .events to pollin as the client is fully authenticated
-  thread_arg->total_cli_fds[thread_index][client_index].events &= ~POLLPRI;
+  // Change the events for the client's file descriptor to POLLIN, indicating that the client is fully authenticated
+  thread_arg->total_cli_fds[thread_index][client_index].events = POLLIN;
 
   return __SUCCESS__;
+
+// Handling failure cases and cleanup
+__failure:
+  // Zero out sensitive information before returning if an error occurs during the process
+  bzero(key, crypto_secretbox_KEYBYTES);
+  bzero(nonce, crypto_secretbox_NONCEBYTES);
+  // Return an error code indicating the failure
+  return LOG(NET_LOG_PATH, E_INVALID_PING, E_INVALID_PING_M);
 }
+
 

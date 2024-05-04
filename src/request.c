@@ -16,7 +16,7 @@
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the request is processed successfully, or an error code if an undefined request code is encountered.
  */
-static inline errcode_t req_run(const void *req, uint32_t reqcode, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+static inline errcode_t req_run(void *req, uint32_t reqcode, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   switch (reqcode)
   {
@@ -48,7 +48,7 @@ static inline errcode_t req_run(const void *req, uint32_t reqcode, thread_arg_t 
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the request is handled successfully, EREQ_FAIL if an error occurs.
  */
-errcode_t req_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+errcode_t req_handle(void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   uint32_t reqcode;
   memcpy((void*)&reqcode, req, 4); // Get request code
@@ -77,7 +77,7 @@ errcode_t req_handle(const void *req, thread_arg_t *thread_arg, size_t thread_in
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the request is processed successfully, or an error code if an undefined request code is encountered.
  */
-static inline errcode_t req_pri_run(const void *req, uint32_t reqcode, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+static inline errcode_t req_pri_run(void *req, uint32_t reqcode, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   switch (reqcode)
   {
@@ -95,13 +95,13 @@ static inline errcode_t req_pri_run(const void *req, uint32_t reqcode, thread_ar
       break;
     case REQ_SEND_PING:
       // Send a ping message to the client as a response to REQ_SEND_PING request
-      net_send_ping(thread_arg, thread_index, client_index, (const void *)PING_HELLO, PING_HELLO_LEN);
+      net_send_auth_ping(thread_arg, thread_index, client_index);
       // Free the memory allocated for the request stream
       free(req);
       break;
     case REQ_RECV_PING:
       // Receive and process a ping message from the client as a response to REQ_RECV_PING request
-      net_recv_ping(thread_arg, thread_index, client_index, (const void *)PING_HELLO, PING_HELLO_LEN);
+      net_recv_auth_ping(req, thread_arg, thread_index, client_index);
       // Free the memory allocated for the request stream
       free(req);
       break;
@@ -130,7 +130,7 @@ static inline errcode_t req_pri_run(const void *req, uint32_t reqcode, thread_ar
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the priority data is handled successfully, EREQ_FAIL if an error occurs.
  */
-errcode_t req_pri_handle(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+errcode_t req_pri_handle(void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   uint32_t reqcode;
   memcpy((void*)&reqcode, req, 4); // Get request code
