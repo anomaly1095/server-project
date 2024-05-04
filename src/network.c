@@ -230,8 +230,8 @@ inline void net_init_clifd(pollfd_t **total_cli__fds)
   for (size_t i = 0; i < SERVER_THREAD_NO; i++) {
     for (size_t j = 0; j < CLIENTS_PER_THREAD; j++) {
       // Set file descriptor to -1 so that it is ignored by poll
-      total_cli__fds[i][j].fd = -1;
-      total_cli__fds[i][j].events = 0;
+      total_cli__fds[i][j].fd = FD_DISCO;
+      total_cli__fds[i][j].events = POLLIN | POLLPRI;
       total_cli__fds[i][j].revents = 0;
     }
   }
@@ -259,7 +259,7 @@ static inline errcode_t net_add_clifd_to_thread(pollfd_t *thread_cli__fds, MYSQL
   // Iterate through the thread's list of file descriptors
   for (size_t i = 0; i < CLIENTS_PER_THREAD; i++) {
     // Find an empty slot in the list of file descriptors
-    if (thread_cli__fds[i].fd == -1) {
+    if (thread_cli__fds[i].fd == FD_DISCO) {
       // Add the new client file descriptor to the list
       thread_cli__fds[i].fd = new_cli_fd;
       thread_cli__fds[i].events = POLLIN | POLLPRI; // Set events to priority because the client has not authenticated yet
@@ -909,13 +909,12 @@ __failure:
 errcode_t net_send_ping(thread_arg_t *thread_arg, size_t thread_index, size_t client_index, const void *packet, const size_t packet_len)
 {
   co_t *co; // Pointer to connection object
-  size_t nrow; // Number of rows returned from the database
   uint8_t c[crypto_secretbox_MACBYTES + packet_len]; // Buffer for encrypted message
 
   // Lock the global connection mutex to ensure exclusive access to shared resources
   pthread_mutex_lock(&mutex_connection_global);
   // Retrieve connection object including the symmetric key from the database
-  if (db_co_sel_all_by_fd(thread_arg->db_connect, &co, &nrow, thread_arg->total_cli_fds[thread_index][client_index].fd))
+  if (db_co_sel_all_by_fd(thread_arg->db_connect, &co, thread_arg->total_cli_fds[thread_index][client_index].fd))
   {
     // If database query fails, unlock the mutex before returning
     pthread_mutex_unlock(&mutex_connection_global);
@@ -925,12 +924,6 @@ errcode_t net_send_ping(thread_arg_t *thread_arg, size_t thread_index, size_t cl
   }
   // Unlock the global connection mutex after accessing shared resources
   pthread_mutex_unlock(&mutex_connection_global);
-
-  // Check number of rows returned
-  if (nrow > 1){
-    free(co);
-    return LOG(NET_LOG_PATH, E_MULTIPLE_VALS, E_MULTIPLE_VALS_M);
-  }
 
   // Encrypt the ping message
   if (secu_symmetric_encrypt(co->co_key, c, packet, packet_len))
@@ -979,7 +972,6 @@ errcode_t net_send_ping(thread_arg_t *thread_arg, size_t thread_index, size_t cl
 errcode_t net_recv_auth_ping(const void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   co_t *co; // Pointer to connection object
-  size_t nrow; // Number of rows returned from the database
   uint8_t *correct_ping = PING_HELLO; // Correct ping message
   uint8_t m[PING_HELLO_LEN]; // Buffer for decrypted message
   uint32_t seglen; // Length of data segment
@@ -994,7 +986,7 @@ errcode_t net_recv_auth_ping(const void *req, thread_arg_t *thread_arg, size_t t
   // Lock the global connection mutex to ensure exclusive access to shared resources
   pthread_mutex_lock(&mutex_connection_global);
   // Fetch data including connection key from the database
-  if (db_co_sel_all_by_fd(thread_arg->db_connect, &co, &nrow, thread_arg->total_cli_fds[thread_index][client_index].fd))
+  if (db_co_sel_all_by_fd(thread_arg->db_connect, &co, thread_arg->total_cli_fds[thread_index][client_index].fd))
   {
     // If database query fails, unlock the mutex before returning
     pthread_mutex_unlock(&mutex_connection_global);
@@ -1004,12 +996,6 @@ errcode_t net_recv_auth_ping(const void *req, thread_arg_t *thread_arg, size_t t
   }
   // Unlock the global connection mutex after accessing shared resources
   pthread_mutex_unlock(&mutex_connection_global);
-  
-  // Check number of rows returned
-  if (nrow > 1){
-    free(co);
-    return LOG(NET_LOG_PATH, E_MULTIPLE_VALS, E_MULTIPLE_VALS_M);
-  }
   
   // Decrypt the ping message
   if (secu_symmetric_decrypt(co->co_key, m, req + 8, PING_HELLO_LEN + crypto_secretbox_MACBYTES))

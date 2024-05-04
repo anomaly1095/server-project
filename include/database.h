@@ -3,6 +3,7 @@
 #ifndef DATABASE_H
 #define DATABASE_H      1
 #include "security.h"
+#include "threads.h"
 
 
 
@@ -236,15 +237,19 @@ errcode_t db_co_sel_all_by_id(MYSQL *db_connect, co_t **co, const id64_t co_id);
 #define QUERY_CO_SEL_ALL_BY_FD_LEN \
 (__builtin_strlen(QUERY_CO_SEL_ALL_BY_FD))
 
-/// @attention Memory will be allocated internally for co objects and nrow set internally
-/// @attention Should only be used in case of short interval db_cleanups 
-/// @brief get all columns of all rows matching co_fd
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param nrow number of rows returned by the query 
-/// @param co_fd file descriptor number we are looking for
-errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const sockfd_t co_fd);
-
+/// @brief Get all columns for the connection matching the specified file descriptor.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co Pointer to a connection object where the fetched data will be stored.
+///           Memory will be allocated internally for the connection object.
+/// @param co_fd The file descriptor number for which the connection row will be retrieved from the database.
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to initialize the statement,
+///       prepare the query, bind parameters, execute the statement, or fetch rows.
+///     - Returns a warning code if no rows are fetched from the query.
+errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t *co, const sockfd_t co_fd);
 //--------------------
 
 ///@brief query to get all data by authentication status 
@@ -267,13 +272,26 @@ errcode_t db_co_sel_all_by_auth_stat(MYSQL *db_connect, co_t **co, size_t *nrow,
 #define QUERY_CO_SEL_ALL_BY_ADDR_LEN \
 (__builtin_strlen(QUERY_CO_SEL_ALL_BY_ADDR))
 
-/// @attention Memory will be allocated internally for co objects and nrow set internally
-/// @brief get all columns by ip address
-/// @param db_connect MYSQL database connection
-/// @param co non allocated connection object
-/// @param nrow number of rows returned by the query 
-/// @param co_ip_addr ip address big endian byte order
-errcode_t db_co_sel_all_by_addr(MYSQL *db_connect, co_t **co, size_t *nrow, const uint8_t *co_ip_addr, const in_port_t co_port);
+
+//--------------------
+
+
+///@brief query to get all data with ip address
+#define QUERY_CO_SEL_KEY_BY_FD "SELECT co_key FROM Connection WHERE co_fd = %d;"
+#define QUERY_CO_SEL_KEY_BY_FD_LEN \
+(__builtin_strlen(QUERY_CO_SEL_KEY_BY_FD))
+
+/// @brief Get the symmetric key for the client that has the specified socket file descriptor.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_key Buffer to store the symmetric key.
+/// @param co_fd connection socket file descriptor
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
+errcode_t db_co_sel_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t co_fd);
+
 
 //--------------------
 

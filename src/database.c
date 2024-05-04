@@ -522,6 +522,51 @@ static inline void fill_params_co_del_byaddr(MYSQL_BIND *params, uint8_t *co_ip_
 
 
 /**
+ * @brief Delete a connection from the database by its ID.
+ * 
+ * This function deletes a connection object from the database using its ID.
+ * 
+ * @param db_connect The MySQL database connection.
+ * @param co_id The ID of the connection to be deleted.
+ * @return An error code indicating the success or failure of the operation.
+ */
+errcode_t db_co_del_byid(MYSQL *db_connect, const id64_t co_id)
+{
+    char query[QUERY_CO_DEL_BYID_LEN + 24];
+
+    // Construct the query
+    sprintf(query, QUERY_CO_DEL_BYID, co_id);
+    
+    // Execute the query
+    if (!mysql_real_query(db_connect, query, strlen(query)))
+      return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+    return __SUCCESS__;
+}
+
+
+/**
+ * @brief Delete a connection from the database by its file descriptor.
+ * 
+ * This function deletes a connection object from the database using its file descriptor.
+ * 
+ * @param db_connect The MySQL database connection.
+ * @param co_fd The file descriptor of the connection to be deleted.
+ * @return An error code indicating the success or failure of the operation.
+ */
+errcode_t db_co_del_byfd(MYSQL *db_connect, const sockfd_t co_fd)
+{
+    char query[QUERY_CO_DEL_BYFD_LEN + 16];
+
+    // Construct the query
+    sprintf(query, QUERY_CO_DEL_BYFD, co_fd);
+    
+    // Execute the query
+    if (!mysql_real_query(db_connect, query, strlen(query)))
+      return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+    return __SUCCESS__;
+}
+
+/**
  * @brief Delete a connection by its address from the database.
  * 
  * This function deletes a connection object from the database using its address.
@@ -564,52 +609,6 @@ cleanup:
   mysql_stmt_close(stmt);
   return LOG(DB_LOG_PATH, (int32_t)mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
-
-
-/**
- * @brief Delete a connection from the database by its ID.
- * 
- * This function deletes a connection object from the database using its ID.
- * 
- * @param db_connect The MySQL database connection.
- * @param co_id The ID of the connection to be deleted.
- * @return An error code indicating the success or failure of the operation.
- */
-errcode_t db_co_del_byid(MYSQL *db_connect, const id64_t co_id)
-{
-    char query[QUERY_CO_DEL_BYID_LEN + 24];
-
-    // Construct the query
-    sprintf(query, QUERY_CO_DEL_BYID, co_id);
-    
-    // Execute the query
-    if (!mysql_real_query(db_connect, query, strlen(query)))
-      return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
-    return __SUCCESS__;
-}
-
-/**
- * @brief Delete a connection from the database by its file descriptor.
- * 
- * This function deletes a connection object from the database using its file descriptor.
- * 
- * @param db_connect The MySQL database connection.
- * @param co_fd The file descriptor of the connection to be deleted.
- * @return An error code indicating the success or failure of the operation.
- */
-errcode_t db_co_del_byfd(MYSQL *db_connect, const sockfd_t co_fd)
-{
-    char query[QUERY_CO_DEL_BYFD_LEN + 16];
-
-    // Construct the query
-    sprintf(query, QUERY_CO_DEL_BYFD, co_fd);
-    
-    // Execute the query
-    if (!mysql_real_query(db_connect, query, strlen(query)))
-      return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
-    return __SUCCESS__;
-}
-
 
 /**
  * @brief Delete all connection rows that were not active for a specified duration.
@@ -737,7 +736,6 @@ static inline void db_co_res_cpy(co_t *co, MYSQL_BIND *result)
 }
 
 
-
 /**
  * @attention Memory will be allocated internally for the `co` object.
  * 
@@ -829,28 +827,23 @@ cleanup:
 }
 
 
-
-/// @attention Memory will be allocated internally for co objects and nrow set internally.
-///             The memory for co objects must be freed by the caller to avoid memory leaks.
-/// @brief Get all columns of all rows matching co_fd.
+/// @brief Get all columns for the connection matching the specified file descriptor.
 ///
 /// @param db_connect The MYSQL database connection.
-/// @param co Pointer to a pointer to a connection object (co) where the fetched data will be stored.
-///           Memory will be allocated internally based on the number of rows fetched.
-/// @param nrow Pointer to a size_t variable where the number of rows fetched will be stored.
-/// @param co_fd The file descriptor number for which rows will be retrieved from the database.
+/// @param co Pointer to a connection object where the fetched data will be stored.
+///           Memory will be allocated internally for the connection object.
+/// @param co_fd The file descriptor number for which the connection row will be retrieved from the database.
 ///
 /// @return 
 ///     - Returns __SUCCESS__ upon successful execution.
 ///     - Returns an error code if an error occurs, such as failure to initialize the statement,
 ///       prepare the query, bind parameters, execute the statement, or fetch rows.
 ///     - Returns a warning code if no rows are fetched from the query.
-errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const sockfd_t co_fd)
+errcode_t db_co_sel_by_fd(MYSQL *db_connect, co_t *co, const sockfd_t co_fd)
 {
   MYSQL_STMT *stmt;
   MYSQL_BIND param;
   MYSQL_BIND result[CO_NROWS]; // Number of columns in the result set
-  size_t i;
 
   if (!(stmt = mysql_stmt_init(db_connect)))
     return LOG(DB_LOG_PATH, mysql_stmt_errno(db_connect), mysql_stmt_error(db_connect));
@@ -879,43 +872,36 @@ errcode_t db_co_sel_all_by_fd(MYSQL *db_connect, co_t **co, size_t *nrow, const 
   if (mysql_stmt_bind_result(stmt, result))
     goto cleanup;
 
-  // Store the result set
+  // Store the result set (expecting one row)
   if (mysql_stmt_store_result(stmt))
     goto cleanup;
 
-  // Get the number of rows
-  if (!(*nrow = mysql_stmt_num_rows(stmt))){
+  // Fetch the row
+  if (mysql_stmt_fetch(stmt) != MYSQL_NO_DATA) {
+    db_co_res_cpy(co, result);
+  } else {
+    // No row fetched
     mysql_stmt_close(stmt);
     mysql_stmt_free_result(stmt);
     return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M1);
   }
-  // Allocate memory for the result set
-  if (!(*co = (co_t*)malloc(*nrow * sizeof(co_t)))){
-    mysql_stmt_close(stmt);
-    mysql_stmt_free_result(stmt);
-    return LOG(DB_LOG_PATH, EMALLOC_FAIL, EMALLOC_FAIL_M2);
-  }
 
-  // Fetch rows
-  i = 0;
-  while (!mysql_stmt_fetch(stmt)){
-    db_co_res_cpy(co[i], result);
-    ++i;
-  }
-
-  for (i = 0; i < CO_NROWS; ++i)
+  for (size_t i = 0; i < CO_NROWS; ++i)
     free(result[i].buffer);
+
   // Cleanup
   mysql_stmt_close(stmt);
   mysql_stmt_free_result(stmt);
   return __SUCCESS__;
+
 cleanup:
-  for (i = 0; i < CO_NROWS; ++i)
+  for (size_t i = 0; i < CO_NROWS; ++i)
     free(result[i].buffer);
   mysql_stmt_close(stmt);
   mysql_stmt_free_result(stmt);
   return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
+
 
 
 /// @brief Retrieve all columns by connection/authentication status.
@@ -1108,6 +1094,47 @@ cleanup:
   mysql_stmt_free_result(stmt);
   return LOG(DB_LOG_PATH, mysql_stmt_errno(stmt), mysql_stmt_error(stmt));
 }
+
+
+/// @brief Get the symmetric key for the client that has the specified socket file descriptor.
+///
+/// @param db_connect The MYSQL database connection.
+/// @param co_key Buffer to store the symmetric key.
+/// @param co_fd connection socket file descriptor
+///
+/// @return 
+///     - Returns __SUCCESS__ upon successful execution.
+///     - Returns an error code if an error occurs, such as failure to execute the query.
+errcode_t db_co_sel_key_by_fd(MYSQL *db_connect, const uint8_t *co_key, sockfd_t co_fd)
+{
+  char query[QUERY_CO_SEL_KEY_BY_FD_LEN + 16];
+  sprintf(query, QUERY_CO_SEL_KEY_BY_FD, co_fd);
+  // Execute the query
+  if (mysql_real_query(db_connect, query, strlen(query)))
+    return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+
+  // Fetch the result
+  MYSQL_RES *result = mysql_store_result(db_connect);
+  if (!result) {
+    return LOG(DB_LOG_PATH, mysql_errno(db_connect), mysql_error(db_connect));
+  }
+
+  // Check if there are any rows returned
+  MYSQL_ROW row = mysql_fetch_row(result);
+  if (!row) {
+    mysql_free_result(result);
+    return LOG(DB_LOG_PATH, WDB_NO_ROWS, WDB_NO_ROWS_M1);
+  }
+
+  // Copy the key from the result to the buffer
+  memcpy((void*)co_key, (const void*)row[0], crypto_secretbox_KEYBYTES);
+
+  // Free the result and return success
+  mysql_free_result(result);
+  return __SUCCESS__;
+}
+
+
 
 /// @brief Get the symmetric key for the client that has the specified address pair (ip, port).
 ///

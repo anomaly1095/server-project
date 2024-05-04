@@ -3,7 +3,6 @@
 
 #ifndef REQUEST_H
 #define REQUEST_H     1
-#include "threads.h"
 
 /*==========================================================================================
 |Requests are gona be sent from the client to the server                                    |
