@@ -34,6 +34,30 @@ typedef struct DBCreds
 /// @param db_connect MYSQL db connection
 errcode_t db_init(MYSQL **db_connect);
 
+/// used by the new-db module
+#define QUERY_NEW_DB "CREATE DATABASE %s;"
+
+/// used by the new-db module
+#define QUERY_CREATE_CO "CREATE TABLE Connection (\
+  co_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,\
+  co_fd INT NOT NULL DEFAULT 4,\
+  co_auth_status TINYINT UNSIGNED NOT NULL DEFAULT 0,\
+  co_last_co DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00',\
+  co_af SMALLINT UNSIGNED NOT NULL DEFAULT 0,\
+  co_port SMALLINT UNSIGNED NOT NULL DEFAULT 0,\
+  co_ip_addr BINARY(16) NOT NULL DEFAULT 0x0,\
+  co_key BINARY(32) NOT NULL DEFAULT 0x0,\
+  co_nonce BINARY(24) NOT NULL DEFAULT 0x0\
+);"
+
+/// used by the new-db module
+#define QUERY_CREATE_KEYPAIR "CREATE TABLE `KeyPairs` (\
+  `pk` binary(32) NOT NULL,\
+  `sk` binary(32) NOT NULL,\
+  PRIMARY KEY (`pk`,`sk`)\
+);"
+
+#define MAX_QUERY_LENGTHX 64
 
 //==========================================================================
 //                       ASYMMETRIC KEYS SECTION

@@ -33,6 +33,14 @@ typedef unsigned int errcode_t;
 #define MAX_MEM_WARN  4 // maximum warning from the kernel before we do an emergency exit
 #define MEM_WARN_INTV 1
 
+#define ERROR_DB_NAME_LENGTH "Invalid db name length: %s\n"
+#define ERROR_DB_NAME_CHAR "Invalid character in db name: %c\n"
+#define ERROR_DB_INIT   "Failed to initialize db connection\n"
+#define ERROR_DB_CONNECT "Failed to connect to MySQL server: %s\n"
+#define ERROR_DB_CREATE "Failed to create database: %s\n"
+#define ERROR_DB_SELECT "Failed to select database: %s\n"
+#define ERROR_DB_TABLES "Failed to create tables: %s\n"
+#define SUCCESS_DB_CREATED "Database and tables created successfully!\n"
 #define E_GETPASS_M     "Error getting password)"
 #define E_PASS_LEN_M    "Security invalid password length"
 #define E_INVAL_PASS_M  "Security invalid password character"

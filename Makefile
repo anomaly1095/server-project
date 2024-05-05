@@ -14,22 +14,26 @@ BIN = bin
 
 
 # Build all the executables and link in production mode
-all-prod: base-prod security-prod database-prod request-prod network-prod init-prod main-prod new-pass
+all-prod: base-prod security-prod database-prod request-prod network-prod init-prod main-prod new-pass new-db
 	@echo "Linking final app"
 	gcc -o $(BIN)/server $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(PROD_FLAGS) $(MYSQL_FLAGS) $(SODIUM_FLAGS) $(THREAD_FLAGS)
 	@chmod 100 $(BIN)/server
 	@echo "done"
 
 # Build all the executables and link in debug mode
-all-debug: base-debug security-debug database-debug request-debug network-debug init-debug main-debug new-pass
+all-debug: base-debug security-debug database-debug request-debug network-debug init-debug main-debug new-pass new-db
 	@echo "Linking final app"
 	gcc -o $(BIN)/final $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(DEBUG_FLAGS) $(MYSQL_FLAGS) $(SODIUM_FLAGS) $(THREAD_FLAGS)
 	@chmod +x $(BIN)/final
 	@echo "done"
 
-new-pass: $(SRC)/new_pass.c
+new-pass: $(SRC)/new-pass.c
 	@echo "Building the helper application"
-	gcc -o $(BIN)/new_pass $(SRC)/new_pass.c $(PROD_FLAGS) $(SODIUM_FLAGS)
+	gcc -o $(BIN)/new-pass $(SRC)/new-pass.c $(PROD_FLAGS) $(SODIUM_FLAGS)
+
+new-db: $(SRC)/new-db.c
+	@echo "Building the helper application"
+	gcc -o $(BIN)/new-db $(SRC)/new-db.c $(PROD_FLAGS) $(MYSQL_FLAGS)
 
 # Compile main.c
 main-prod: $(SRC)/main.c
@@ -106,7 +110,8 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  new-pass 			 Build a secondary app for init a new server password"
+	@echo "  new-pass 			 Build a secondary app to initialize a new database"
+	@echo "  new-pass 			 Build a secondary app to initialize a new server password"
 	@echo "  all-prod        Build all executables in production mode"
 	@echo "  all-debug       Build all executables in debug mode"
 	@echo "  main-prod       Compile main.c in production mode"

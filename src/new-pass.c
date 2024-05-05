@@ -1,5 +1,7 @@
 #include "../include/base.h"
 
+
+
 // Function to check if a character is within the valid ASCII printable range
 static inline errcode_t pass_check_charx(const char c) {
   if (c < 32 || c > 126)

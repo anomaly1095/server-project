@@ -8,6 +8,7 @@
 
   #define PATH_PHYSKEY    "/media/amnesia2/PKEY/keys/auth_init.bin"  // path to the key for first step authentication
 
+  #define DB_DEFAULT_HOST "127.0.0.1"
   #define DB_DEFAULT_PORT 3306U
 
 
