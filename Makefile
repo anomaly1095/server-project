@@ -30,88 +30,105 @@ all-debug: base-debug security-debug database-debug request-debug network-debug 
 new-pass: $(SRC)/init/new-pass.c
 	@echo "Building the helper application"
 	gcc -o $(BIN)/init/new-pass $(SRC)/init/new-pass.c $(PROD_FLAGS) $(SODIUM_FLAGS)
+	@echo "done"
+
 
 new-db: $(SRC)/init/new-db.c
 	@echo "Building the helper application"
 	gcc -o $(BIN)/init/new-db $(SRC)/init/new-db.c $(PROD_FLAGS) $(MYSQL_FLAGS)
+	@echo "done"
 
 # Compile main.c
 main-prod: $(SRC)/main.c
 	@echo "Compiling main file"
 	gcc $(PROD_FLAGS) -c $(SRC)/main.c -o $(BIN)/main.o
+	@echo "done"
 
 # Compile main.c in debug mode
 main-debug: $(SRC)/main.c
 	@echo "Compiling main file in debug mode"
 	gcc $(DEBUG_FLAGS) -c $(SRC)/main.c -o $(BIN)/main.o
+	@echo "done"
 
 # Compile init.c
 init-prod: $(SRC)/init.c
 	@echo "Compiling init file"
 	gcc $(PROD_FLAGS) -c $(SRC)/init.c -o $(BIN)/init.o
+	@echo "done"
 
 # Compile init.c in debug mode
 init-debug: $(SRC)/init.c
 	@echo "Compiling init file in debug mode"
 	gcc $(DEBUG_FLAGS) -c $(SRC)/init.c -o $(BIN)/init.o
+	@echo "done"
 
 # Compile network.c
 network-prod: $(SRC)/network.c
 	@echo "Compiling network file"
 	gcc $(PROD_FLAGS) -c $(SRC)/network.c -o $(BIN)/network.o
+	@echo "done"
 
 # Compile network.c in debug mode
 network-debug: $(SRC)/network.c
 	@echo "Compiling network file in debug mode"
 	gcc $(DEBUG_FLAGS) -c $(SRC)/network.c -o $(BIN)/network.o
+	@echo "done"
 
 # Compile request.c
 request-prod: $(SRC)/request.c
 	@echo "Compiling request file"
 	gcc $(PROD_FLAGS) -c $(SRC)/request.c -o $(BIN)/request.o
+	@echo "done"
 
 # Compile request.c in debug mode
 request-debug: $(SRC)/request.c
 	@echo "Compiling request file in debug mode"
 	gcc $(DEBUG_FLAGS) -c $(SRC)/request.c -o $(BIN)/request.o
+	@echo "done"
 
 # Compile database.c
 database-prod: $(SRC)/database.c
 	@echo "Compiling database file"
 	gcc $(PROD_FLAGS) -c $(SRC)/database.c -o $(BIN)/database.o
+	@echo "done"
 
 # Compile database.c in debug mode
 database-debug: $(SRC)/database.c
 	@echo "Compiling database file in debug mode"
 	gcc $(DEBUG_FLAGS) -c $(SRC)/database.c -o $(BIN)/database.o
+	@echo "done"
 
 # Compile security.c
 security-prod: $(SRC)/security.c
 	@echo "Compiling security file"
 	gcc $(PROD_FLAGS) -c $(SRC)/security.c -o $(BIN)/security.o
+	@echo "done"
 
 # Compile security.c in debug mode
 security-debug: $(SRC)/security.c
 	@echo "Compiling security file in debug mode"
 	gcc $(DEBUG_FLAGS) -c $(SRC)/security.c -o $(BIN)/security.o
+	@echo "done"
 
 # Compile base.c
 base-prod: $(SRC)/base.c
 	@echo "Compiling base file"
 	gcc $(PROD_FLAGS) -c $(SRC)/base.c -o $(BIN)/base.o
+	@echo "done"
 
 # Compile base.c in debug mode
 base-debug: $(SRC)/base.c
 	@echo "Compiling base file in debug mode"
 	gcc $(DEBUG_FLAGS) -c $(SRC)/base.c -o $(BIN)/base.o
+	@echo "done"
 
 # Help section
 help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  new-pass 			 Build a secondary app to initialize a new database"
-	@echo "  new-pass 			 Build a secondary app to initialize a new server password"
+	@echo "  new-pass        Build a secondary app to initialize a new database"
+	@echo "  new-pass        Build a secondary app to initialize a new server password"
 	@echo "  all-prod        Build all executables in production mode"
 	@echo "  all-debug       Build all executables in debug mode"
 	@echo "  main-prod       Compile main.c in production mode"

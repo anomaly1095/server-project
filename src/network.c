@@ -235,7 +235,7 @@ static inline errcode_t net_handle_poll_err(int __err)
  * 
  * @param total_cli__fds All file descriptors available across all threads.
  */
-inline void net_init_clifd(pollfd_t **total_cli__fds)
+inline void net_init_clifd(pollfd_t total_cli__fds[SERVER_THREAD_NO][CLIENTS_PER_THREAD])
 {
   for (size_t i = 0; i < SERVER_THREAD_NO; i++) {
     for (size_t j = 0; j < CLIENTS_PER_THREAD; j++) {

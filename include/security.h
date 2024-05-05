@@ -39,10 +39,6 @@ errcode_t secu_init_keys(MYSQL *db_connect);
 /// @param pass command line argument entered password
 errcode_t secu_check_init_cred(const uint8_t *pass);
 
-/// @brief initialize pollfd structures for incoming data and fd = -1 so that they are ignored by poll
-/// @param total_cli__fds all file descriptors available accross all threads
-void net_init_clifd(pollfd_t **total_cli__fds);
-
 /**
  * @brief Write the keys to the database.
  * 

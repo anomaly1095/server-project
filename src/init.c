@@ -42,7 +42,7 @@ errcode_t __init__(thread_arg_t *thread_arg)
     return __FAILURE__;
 
   // Step 4: Initialize pollfds for polling
-  net_init_clifd((pollfd_t**)thread_arg->total_cli_fds);
+  net_init_clifd(thread_arg->total_cli_fds);
 
   // Step 5: Delete old asymmetric keys, generate new ones, and save them
   if (secu_init_keys(thread_arg->db_connect))

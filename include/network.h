@@ -73,7 +73,7 @@ extern int32_t __KEEPCNTR;  // 5 repetitions
  * 
  * @param total_cli__fds All file descriptors available across all threads.
  */
-void net_init_clifd(pollfd_t **total_cli__fds);
+void net_init_clifd(pollfd_t total_cli__fds[SERVER_THREAD_NO][CLIENTS_PER_THREAD]);
 
 
 /// @brief Setting up the server (socket / bind / options / listen)

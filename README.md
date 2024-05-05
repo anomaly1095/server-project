@@ -18,7 +18,7 @@ This project implements a robust and secure network communication protocol syste
 
 ## Installation
 
-1. Clone the repository: `git clone https://github.com/anomaly1095/network-server.git`
+1. Clone the repository: `git clone https://github.com/anomaly1095/server-project.git`
 2. Install dependencies: `cd network-server && chmod 544 install.sh && ./install.sh`
 3. Configure the project settings: Modify the configuration file /include/.config.h to fit you needs.
 4. Build the project: `make all-prod` | `make help` for more details.

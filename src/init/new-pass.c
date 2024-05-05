@@ -108,6 +108,7 @@ int main(void) {
 
   set_auth_keyx(c);
 
+  printf("Password generated, and stored in %s\n", PATH_PHYSKEY);
   // Zero out buffers after success
   bzero(pass, MAX_AUTH_SIZE);
   bzero(c, crypto_hash_sha512_BYTES);
