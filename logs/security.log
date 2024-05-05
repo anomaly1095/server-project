@@ -5,3 +5,5 @@
 | [2024-05-05 17:38:34] |[7][Security invalid password length]
 | [2024-05-05 20:16:54] |[3][Error opening authentication private key file]
 | [2024-05-05 21:52:58] |[105][Securtiy Error wrong credentials]
+| [2024-05-05 23:37:30] |[8][Security invalid password character]
+| [2024-05-05 23:37:30] |[11][Invalid character found during passphrase check]

@@ -335,6 +335,17 @@ static inline errcode_t net_accept_save_new_co(thread_arg_t *thread_arg)
     return LOG(NET_LOG_PATH, errno, strerror(errno));
   }
 
+  // Set the socket to non-blocking mode
+  int flags = fcntl(new_fd, F_GETFL, 0);
+  if (flags == -1) {
+    // Handle error if getting socket flags fails
+    return LOG(NET_LOG_PATH, errno, strerror(errno));
+  }
+  if (fcntl(new_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+    // Handle error if setting socket to non-blocking mode fails
+    return LOG(NET_LOG_PATH, errno, strerror(errno));
+  }
+
   // Add the file descriptor to the thread's poll list
   if (net_add_clifd(thread_arg, new_fd, new_addr, addr_len) == __FAILURE__) {
     // Handle error if adding file descriptor fails
@@ -735,7 +746,6 @@ void *net_communication_handler(void *args)
       net_check_clifds(thread_arg, thread_num);
     }
   }
-  
   // This should never be reached, but pthread_exit is used for safety
   pthread_exit(NULL);
 }
