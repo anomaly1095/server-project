@@ -23,8 +23,8 @@ all-prod: base-prod security-prod database-prod request-prod network-prod init-p
 # Build all the executables and link in debug mode
 all-debug: base-debug security-debug database-debug request-debug network-debug init-debug main-debug new-pass new-db
 	@echo "Linking final app"
-	gcc -o $(BIN)/final $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(DEBUG_FLAGS) $(MYSQL_FLAGS) $(SODIUM_FLAGS) $(THREAD_FLAGS)
-	@chmod +x $(BIN)/final
+	gcc -o $(BIN)/server $(BIN)/main.o $(BIN)/init.o $(BIN)/network.o $(BIN)/request.o $(BIN)/database.o $(BIN)/security.o $(BIN)/base.o $(DEBUG_FLAGS) $(MYSQL_FLAGS) $(SODIUM_FLAGS) $(THREAD_FLAGS)
+	@chmod +x $(BIN)/server
 	@echo "done"
 
 new-pass: $(SRC)/init/new-pass.c
