@@ -19,7 +19,8 @@ pthread_mutex_t mutex_connection_key;
 #endif
 
 
-/**
+#if (!DEV_MODE)
+  /**
  * @brief Prompt user for the database hostname.
  * 
  * @param host Buffer to store the hostname.
@@ -98,6 +99,20 @@ errcode_t db_get_auth(db_creds_t *creds)
   creds->port = DB_DEFAULT_PORT; // Assuming DEFAULT_DB_PORT is defined elsewhere
   return __SUCCESS__;
 }
+#else
+
+errcode_t db_get_auth(db_creds_t *creds)
+{
+  memset(creds, 0, sizeof(*creds));
+  memcpy(creds->host, DB_DEFAULT_HOST, __builtin_strlen(DB_DEFAULT_HOST));
+  memcpy(creds->user, DB_DEFAULT_USER, __builtin_strlen(DB_DEFAULT_USER));
+  memcpy(creds->passwd, DB_DEFAULT_PASS, __builtin_strlen(DB_DEFAULT_PASS));
+  memcpy(creds->db, DB_DEFAULT_DB, __builtin_strlen(DB_DEFAULT_DB));
+  creds->port = DB_DEFAULT_PORT;
+  
+  return __SUCCESS__;
+}
+#endif
 
 
 
