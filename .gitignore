@@ -1,5 +1,5 @@
 .env
-tests/
+tests/*
 .vscode/
 bin/*
 logs/*
