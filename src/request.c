@@ -48,9 +48,11 @@ static inline errcode_t req_run(void *req, uint32_t reqcode, thread_arg_t *threa
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the request is handled successfully, EREQ_FAIL if an error occurs.
  */
-errcode_t req_handle(void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+errcode_t req_handle(void *req, ssize_t len_req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   uint32_t reqcode;
+  if (len_req < 4)
+    return __FAILURE__;
   memcpy((void*)&reqcode, req, 4); // Get request code
   
   // Run the request
@@ -130,9 +132,11 @@ static inline errcode_t req_pri_run(void *req, uint32_t reqcode, thread_arg_t *t
  * @param client_index Index of the client.
  * @return __SUCCESS__ if the priority data is handled successfully, EREQ_FAIL if an error occurs.
  */
-errcode_t req_pri_handle(void *req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
+errcode_t req_pri_handle(void *req, ssize_t len_req, thread_arg_t *thread_arg, size_t thread_index, size_t client_index)
 {
   uint32_t reqcode;
+  if (len_req < 4)
+    return __FAILURE__;
   memcpy((void*)&reqcode, req, 4); // Get request code
   
   // Run the request

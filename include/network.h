@@ -63,7 +63,7 @@ extern int32_t __KEEPCNTR;  // 5 repetitions
 
 
 #define CONN_POLL_TIMEOUT -1  // poll untill new connection received
-#define COMM_POLL_TIMEOUT 10  // 10 milliseconds
+#define COMM_POLL_TIMEOUT 100  // 100 milliseconds
 
 /**
  * @brief Initializes pollfd structures for incoming data.

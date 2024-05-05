@@ -76,8 +76,8 @@ static inline errcode_t net_server_init(sockaddr_t *server_addr)
   // Set the address family to the specified value
   server_addr->sa_family = SERVER_AF;
   // Set the port in network byte order, taking into account endianness
-  server_addr->sa_data[0] = (__BYTE_ORDER == __BIG_ENDIAN) ? (SERVER_PORT >> 8) : (SERVER_PORT & 0xFF);
-  server_addr->sa_data[1] = (__BYTE_ORDER == __BIG_ENDIAN) ? (SERVER_PORT & 0xFF) : (SERVER_PORT >> 8);
+  server_addr->sa_data[0] = (__BYTE_ORDER == __BIG_ENDIAN) ? (SERVER_PORT & 0xFF) : (SERVER_PORT >> 8);
+  server_addr->sa_data[1] = (__BYTE_ORDER == __BIG_ENDIAN) ? (SERVER_PORT >> 8) : (SERVER_PORT & 0xFF);
   // Retrieve the IP address for the server
   if (net_get_ipaddr(server_addr))
     return ERR_IP_HANDLER;
@@ -576,35 +576,25 @@ static inline errcode_t sendall(thread_arg_t *thread_arg, size_t thread_index, s
   ssize_t sent = 0;
   while (total_sent < n)
   {
-    sent = send(thread_arg->total_cli_fds[thread_index][client_index].fd, ptr + total_sent, n - total_sent, MSG_DONTWAIT | MSG_OOB);
+    sent = send(thread_arg->total_cli_fds[thread_index][client_index].fd, ptr + total_sent, n - total_sent, 0);
     if (sent == -1)
     {
       if (errno == EAGAIN || errno == EWOULDBLOCK)
-      {
         // Socket buffer is full, try again later
         continue;
-      }
       else if (net_handle_send_err(thread_arg, thread_index, client_index, errno))
-      {
         pthread_exit(NULL);
-      }
       else
-      {
         return E_SEND_FAILED;
-      }
     }
 
     if (sent == 0)
     {
       // Socket closed unexpectedly
       if (net_handle_send_err(thread_arg, thread_index, client_index, EPIPE))
-      {
         pthread_exit(NULL);
-      } 
       else
-      {
         return E_SEND_FAILED;
-      }
     }
     total_sent += sent;
   }
@@ -624,9 +614,9 @@ static inline errcode_t sendall(thread_arg_t *thread_arg, size_t thread_index, s
  * @param buf Pointer to a buffer to contain the incoming data stream.
  * @return DATA_AVAILABLE if data is available, otherwise DATA_UNAVAILABLE.
  */
-static errcode_t net_data_available(thread_arg_t *thread_arg, size_t thread_index, size_t client_index, void *buf)
+static errcode_t net_data_available(thread_arg_t *thread_arg, size_t thread_index, size_t client_index, void **buf, ssize_t *len_req)
 {
-  int32_t mss, recv_result, err;
+  int32_t mss, err;
   socklen_t mss_len = sizeof(mss);
   
   // Retrieve the Maximum Segment Size (MSS) for the TCP connection
@@ -634,24 +624,29 @@ static errcode_t net_data_available(thread_arg_t *thread_arg, size_t thread_inde
     return DATA_UNAVAILABLE; // Failed to retrieve MSS
   
   // Allocate memory for the buffer based on MSS
-  buf = malloc((size_t)mss);
+  if (mss > RECV_VAL1){
+    *buf = malloc(RECV_VAL1);
+    // Attempt to receive data from the client socket
+    *len_req = recv(thread_arg->total_cli_fds[thread_index][client_index].fd, *buf, RECV_VAL1, 0);
+  }else{
+    *buf = malloc(RECV_VAL2);
+    // Attempt to receive data from the client socket
+    *len_req = recv(thread_arg->total_cli_fds[thread_index][client_index].fd, *buf, RECV_VAL2, 0);
+  }
   
-  // Attempt to receive data from the client socket
-  recv_result = recv(thread_arg->total_cli_fds[thread_index][client_index].fd, buf, (size_t)mss, MSG_DONTWAIT | MSG_OOB);
-  
-  // Handle different cases of recv_result
-  switch (recv_result)
+  // Handle different cases of *len_req
+  switch (*len_req)
   {
   case -1: // Error occurred
-    free(buf);
-    buf = NULL;
+    free(*buf);
+    *buf = NULL;
     err = errno;
     if (net_handle_recv_err(thread_arg, thread_index, client_index, err))
       pthread_exit(NULL); // Critical error, terminate thread
     return DATA_UNAVAILABLE;
   case 0: // Client disconnected
-    free(buf);
-    buf = NULL;
+    free(*buf);
+    *buf = NULL;
     cli_dc(thread_arg, thread_index, client_index);
     return DATA_UNAVAILABLE;
   default: // Data available
@@ -674,27 +669,25 @@ static inline void net_check_clifds(thread_arg_t *thread_arg, size_t thread_inde
 {
   size_t client_index = 0;
   void *buffer = NULL;
-  
+  ssize_t len_req;
   // Iterate over client file descriptors
-  while (thread_arg->total_cli_fds[thread_index][client_index].fd != -1 && 
-         ((thread_arg->total_cli_fds[thread_index][client_index].revents & POLLIN) || 
-          (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLPRI)))
+  while (thread_arg->total_cli_fds[thread_index][client_index].fd != FD_DISCO)
   {
     if (buffer)
       free(buffer);
     
     // Check if data is available on the client's receive buffer
-    if (net_data_available(thread_arg, thread_index, client_index, buffer))
+    if (net_data_available(thread_arg, thread_index, client_index, &buffer, &len_req))
     {
       if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLPRI) // client needs to authenticate
       {
         // Call request module to handle priority requests (e.g., authentication)
-        req_pri_handle(buffer, thread_arg, thread_index, client_index);
+        req_pri_handle(buffer, len_req, thread_arg, thread_index, client_index);
       }
       else if (thread_arg->total_cli_fds[thread_index][client_index].revents & POLLIN) // client authenticated can perform I/O
       {
         // Call request module to parse and handle regular data reception
-        req_handle(buffer, thread_arg, thread_index, client_index);
+        req_handle(buffer, len_req, thread_arg, thread_index, client_index);
       }
     }
     ++client_index;

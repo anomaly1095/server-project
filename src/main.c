@@ -39,7 +39,7 @@ void run_threads(pthread_t **threads, thread_arg_t *thread_arg);
  * @param argv Array of command-line arguments.
  * @return Error code indicating the success or failure of the server.
  */
-int main(int32_t argc, const char **argv)
+int main(void)
 {
   // Initialize thread argument structure and status
   thread_arg_t thread_arg;

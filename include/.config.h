@@ -5,6 +5,9 @@
 
   #define MAX_AUTH_SIZE 128U
   #define MIN_AUTH_SIZE 8U
+  #define RECV_VAL1     0x3FFUL
+  #define RECV_VAL2     0xFFUL
+
 
   #define PATH_PHYSKEY    "/media/amnesia2/PKEY/keys/auth_init.bin"  // path to the key for first step authentication
 
