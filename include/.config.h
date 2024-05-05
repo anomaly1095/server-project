@@ -3,10 +3,13 @@
 #ifndef CONFIG_H
   #define CONFIG_H    1
 
+  #define MAX_AUTH_SIZE 128U
+  #define MIN_AUTH_SIZE 8U
 
   #define PATH_PHYSKEY    "/media/amnesia2/PKEY/keys/auth_init.bin"  // path to the key for first step authentication
 
   #define DB_DEFAULT_PORT 3306U
+
 
   #define DEV_MODE      1
   #define TEST_MODE     0

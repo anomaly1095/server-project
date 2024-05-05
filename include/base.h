@@ -24,7 +24,6 @@ typedef struct sockaddr sockaddr_t;
 typedef struct hostent  hostent_t;
 
 
-#define MAX_AUTH_SIZE 128U
 #define DATETIME_MAX_LEN 21U
 #define DATETIME_FORMAT (const char *)"%Y-%m-%d %H:%M:%S"
 #define LOG_FORMAT    (const char *)"|  [%s]  |  [%d]  |  [%s]  |\n"
@@ -51,28 +50,6 @@ errcode_t get_pass(char *pass);
  */
 errcode_t check_pass(const char *pass);
 
-
-
-
-/**
- * @brief Get the current system time in the specified format.
- * 
- * @param datetime Output buffer to store the formatted date and time (format: "%Y-%m-%d %H:%M:%S").
- */
-void get_time(char *datetime);
-
-
-/**
- * @brief Internal function to write a log statement to the specified log file.
- * 
- * @param logf File pointer to the log file.
- * @param log_path Path to the log file.
- * @param __err Error code.
- * @param __msg Error message.
- * @param datetime Formatted datetime string.
- * @return __SUCCESS__ if the log entry is written successfully, or an error code if writing fails.
- */
-errcode_t __logw(FILE *logf, const char *log_path, errcode_t __err, const char *__msg, const char *datetime);
 
 /**
  * @brief Write a log entry to the specified log file.

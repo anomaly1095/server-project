@@ -28,15 +28,15 @@ inline errcode_t secu_init(void)
  */
 static inline errcode_t get_auth_key(uint8_t *c)
 {
-  FILE *db_privf;
+  FILE *phys_key_f = fopen(PATH_PHYSKEY, "rb");
   
-  if (!(db_privf = fopen(PATH_PHYSKEY, "rb")))
+  if (!phys_key_f)
     return LOG(DB_LOG_PATH, E_FOPEN, E_FOPEN_M);
   
-  if (fread((void*)c, 1, crypto_hash_sha512_BYTES, db_privf) < crypto_hash_sha512_BYTES)
+  if (fread((void*)c, 1, crypto_hash_sha512_BYTES, phys_key_f) < crypto_hash_sha512_BYTES)
     return LOG(DB_LOG_PATH, E_FREAD, E_FREAD_M);
   
-  fclose(db_privf);
+  fclose(phys_key_f);
   return __SUCCESS__;
 }
 

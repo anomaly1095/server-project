@@ -6,7 +6,7 @@
  * 
  * @param datetime Output buffer to store the formatted date and time (format: "%Y-%m-%d %H:%M:%S").
  */
-inline void get_time(char *datetime)
+static inline void get_time(char *datetime)
 {
   time_t current_time;
   time(&current_time);
@@ -23,18 +23,11 @@ inline void get_time(char *datetime)
  * @param datetime Formatted datetime string.
  * @return __SUCCESS__ if the log entry is written successfully, or an error code if writing fails.
  */
-inline errcode_t __logw(FILE *logf, const char *log_path, errcode_t __err, const char *__msg, const char *datetime)
+static inline void __logw(FILE *logf, const char *log_path, errcode_t __err, const char *__msg, const char *datetime)
 {
   logf = fopen(log_path, "a");
-  if (!logf) return ELOG;
-
-  if (fprintf(logf, LOG_FORMAT, datetime, __err, __msg) < 0)
-  {
-    fclose(logf);
-    return __err;
-  }
-  fclose(logf);
-  return __SUCCESS__;
+  if (!logf) exit(ELOG);
+  fprintf(logf, LOG_FORMAT, datetime, __err, __msg);
 }
 
 
@@ -50,7 +43,8 @@ inline errcode_t log_write(const char *log_path, errcode_t __err, const char *__
 {
   char datetime[DATETIME_MAX_LEN];
   get_time(datetime);
-  return __logw(NULL, log_path, __err, __msg, datetime);
+  __logw(NULL, log_path, __err, __msg, datetime);
+  return __err;
 }
 
 
@@ -63,15 +57,14 @@ inline errcode_t log_write(const char *log_path, errcode_t __err, const char *__
 inline errcode_t get_pass(char *pass)
 {
   printf("Enter server password: ");
-  // Get password from stdin
-  if (!fgets(pass, MAX_AUTH_SIZE, stdin))
-    return LOG(SECU_LOG_PATH, E_GETPASS, E_GETPASS_M);
-
+  char *input = getpass("");
+  strncpy(pass, input, MAX_AUTH_SIZE);
   // Remove trailing newline character
   pass[strcspn(pass, "\n")] = 0x0;
 
   return __SUCCESS__;
 }
+
 
 /**
  * @brief Check if a character is a valid ASCII printable character.
@@ -100,7 +93,7 @@ errcode_t check_pass(const char *pass)
   size_t plen = strlen(pass);
 
   // Check passphrase length
-  if (plen > MAX_AUTH_SIZE)
+  if (plen > MAX_AUTH_SIZE || plen < MIN_AUTH_SIZE)
     return LOG(SECU_LOG_PATH, E_PASS_LEN, E_PASS_LEN_M);
 
   // Check passphrase characters

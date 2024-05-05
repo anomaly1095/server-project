@@ -18,23 +18,24 @@
 errcode_t __init__(thread_arg_t *thread_arg)
 {
   thread_arg->db_connect = NULL;
-  char *pass = (char *)malloc(MAX_AUTH_SIZE);
+  char pass[MAX_AUTH_SIZE];
 
   // Step 1: Get and validate passphrase
   if (get_pass(pass))
     return __FAILURE__;
+    
   if (check_pass(pass))
     return __FAILURE__;
 
   // Step 2: Initialize cryptographic libraries and check passphrase
   if (secu_init())
     return __FAILURE__;
+    
   if (secu_check_init_cred((const uint8_t *)pass))
     return __FAILURE__;
 
   // Securely clear memory containing the passphrase
   memset(pass, 0x0, MAX_AUTH_SIZE);
-  free(pass);
 
   // Step 3: Initialize database connection
   if (db_init(&thread_arg->db_connect))
