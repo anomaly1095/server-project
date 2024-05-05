@@ -39,13 +39,6 @@ errcode_t db_init(MYSQL **db_connect);
 //                       ASYMMETRIC KEYS SECTION
 //==========================================================================
 
-///@brief key table
-// CREATE TABLE KeyPairs (
-//     pk BINARY(32) NOT NULL,
-//     sk BINARY(32) NOT NULL,
-//     PRIMARY KEY (pk, sk)
-// );
-
 
 ///@brief QUERIES TO THE DATABASE
 #define QUERY_KEY_DELETE    "DELETE FROM KeyPairs;"
@@ -84,17 +77,6 @@ errcode_t db_get_pk_sk(MYSQL *db_connect, uint8_t *pk, uint8_t *sk);
 //                       NETWORK CONNECTION OBJECT
 //==========================================================================
 
-/// @brief individual connection table
-// CREATE TABLE Connection (
-//     co_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-//     co_fd INT NOT NULL DEFAULT 4,
-//     co_auth_status TINYINT UNSIGNED NOT NULL DEFAULT 0,
-//     co_last_co DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00',
-//     co_af SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-//     co_port SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-//     co_ip_addr BINARY(16) NOT NULL DEFAULT 0,
-//     co_key BINARY(32) NOT_NULL DEFAULT 0
-// );
 
 ///@brief CONNECTION STRUCT
 typedef struct Connection

@@ -26,7 +26,7 @@ typedef struct hostent  hostent_t;
 
 #define DATETIME_MAX_LEN 21U
 #define DATETIME_FORMAT (const char *)"%Y-%m-%d %H:%M:%S"
-#define LOG_FORMAT    (const char *)"|  [%s]  |  [%d]  |  [%s]  |\n"
+#define LOG_FORMAT    (const char *)"| [%s] |[%d][%s]\n"
 #define DB_LOG_PATH   (const char *)"logs/security.log"
 #define SECU_LOG_PATH (const char *)"logs/security.log"
 #define NET_LOG_PATH  (const char *)"logs/network.log"
