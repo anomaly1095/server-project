@@ -1,4 +1,4 @@
-#include "../include/database.h"
+#include "../../include/database.h"
 
 // Function to validate the database name
 static inline void check_args(const char *db_name) {

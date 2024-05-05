@@ -30,7 +30,7 @@
   #define SERVER_BACKLOG      16U    // number of clients allowed
   #define CLIENTS_PER_THREAD  (SERVER_BACKLOG / SERVER_THREAD_NO)
   #define DB_DEFAULT_HOST "127.0.0.1"
-  #define DB_DEFAULT_USER "admin"
+  #define DB_DEFAULT_USER "test_user"
   #define DB_DEFAULT_PASS "password"
   #define DB_DEFAULT_DB   "project_server_test"
   #define DB_DEFAULT_PORT 3306U

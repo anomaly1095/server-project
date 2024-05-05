@@ -11,20 +11,21 @@ This project implements a robust and secure network communication protocol syste
 - **Multiplexing**: Implements multiplexing to handle multiple network connections concurrently.
 - **Extensive Documentation**: Provides detailed documentation covering all aspects of the project, including setup, usage, and architecture.
 - **Error Handling and Logging**: Incorporates a dedicated module for error handling and logging, ensuring robustness and ease of debugging.
+- **Communication protocol**: Incorporates a dedicated module for request definition and handling, ensuring robustness and performant communication.
 - **MySQL C API Integration**: Integrates the MySQL C API for database interaction, enabling seamless integration with MySQL databases.
 - **Libsodium Encryption**: Utilizes libsodium for encryption, providing strong cryptographic security.
 - **Low-Level Network API Interface**: Implements a low-level network API interface for efficient network communication.
 
 ## Installation
 
-1. Clone the repository: `git clone https://github.com/anomaly1095/network_server.git`
-2. Install dependencies: `cd your-repo && chmod 544 install.sh && ./install.sh`
+1. Clone the repository: `git clone https://github.com/anomaly1095/network-server.git`
+2. Install dependencies: `cd network-server && chmod 544 install.sh && ./install.sh`
 3. Configure the project settings: Modify the configuration file /include/.config.h to fit you needs.
 4. Build the project: `make all-prod` | `make help` for more details.
 
 ## Usage
 
-1. Start the server: `./server`
+1. Start the server: `./bin/final`
 2. Follow the authentication process as per the two-step authentication system.
 3. Start communicating securely over the network.
 
@@ -33,7 +34,7 @@ This project implements a robust and secure network communication protocol syste
 - **Setup Guide**: Provides detailed instructions on setting up the project environment.
 - **User Guide**: Offers comprehensive documentation on how to use the system effectively.
 - **API Reference**: Provides detailed documentation of the project's APIs and interfaces.
-- **Architecture Overview**: Explains the architecture and design principles of the system.
+- **Overview**: Explains the architecture and design principles of the system.
 
 ## Contributing
 
@@ -46,5 +47,5 @@ This project is licensed under the [MIT License](LICENSE).
 ## Credits
 
 - Youssef Azaiez - Project Lead
-- Yousssef Azaiez - Lead Developer
+- Youssef Azaiez - Lead Developer
 - Contributors - [Imen ben Ghanem](CONTRIBUTORS.md)

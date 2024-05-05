@@ -27,13 +27,13 @@ all-debug: base-debug security-debug database-debug request-debug network-debug 
 	@chmod +x $(BIN)/final
 	@echo "done"
 
-new-pass: $(SRC)/new-pass.c
+new-pass: $(SRC)/init/new-pass.c
 	@echo "Building the helper application"
-	gcc -o $(BIN)/new-pass $(SRC)/new-pass.c $(PROD_FLAGS) $(SODIUM_FLAGS)
+	gcc -o $(BIN)/init/new-pass $(SRC)/init/new-pass.c $(PROD_FLAGS) $(SODIUM_FLAGS)
 
-new-db: $(SRC)/new-db.c
+new-db: $(SRC)/init/new-db.c
 	@echo "Building the helper application"
-	gcc -o $(BIN)/new-db $(SRC)/new-db.c $(PROD_FLAGS) $(MYSQL_FLAGS)
+	gcc -o $(BIN)/init/new-db $(SRC)/init/new-db.c $(PROD_FLAGS) $(MYSQL_FLAGS)
 
 # Compile main.c
 main-prod: $(SRC)/main.c
